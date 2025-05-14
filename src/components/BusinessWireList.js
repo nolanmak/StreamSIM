@@ -18,11 +18,22 @@ const BusinessWireList = () => {
         
         // Initially display only the first 5 articles with timestamps
         if (items && items.length > 0) {
-          const initialArticles = items.slice(0, 5).map(article => ({
-            ...article,
-            publishedAt: new Date().toLocaleTimeString()
-          }));
-          setDisplayedArticles(initialArticles);
+          // Add timestamps with a slight offset to ensure proper ordering
+          const initialArticles = items.slice(0, 5).map((article, idx) => {
+            const now = new Date();
+            // Offset by a few seconds to create a natural order
+            const timestamp = now.getTime() - ((5 - idx) * 1000);
+            const publishDate = new Date(timestamp);
+            return {
+              ...article,
+              publishedAt: publishDate.toLocaleTimeString(),
+              publishTimestamp: timestamp
+            };
+          });
+          
+          // Sort by publish timestamp (newest first)
+          const sortedArticles = initialArticles.sort((a, b) => b.publishTimestamp - a.publishTimestamp);
+          setDisplayedArticles(sortedArticles);
         }
         
         setLoading(false);
@@ -48,15 +59,18 @@ const BusinessWireList = () => {
         
         setTimeout(() => {
           // Add timestamp to the article being published
+          const now = new Date();
           const articleWithTimestamp = {
             ...remainingArticles[index],
-            publishedAt: new Date().toLocaleTimeString()
+            publishedAt: now.toLocaleTimeString(),
+            publishTimestamp: now.getTime() // Store timestamp for sorting
           };
           
-          setDisplayedArticles(prev => [
-            articleWithTimestamp,
-            ...prev
-          ]);
+          // Add the new article and sort by publish timestamp (newest first)
+          setDisplayedArticles(prev => {
+            const updated = [articleWithTimestamp, ...prev];
+            return updated.sort((a, b) => (b.publishTimestamp || 0) - (a.publishTimestamp || 0));
+          });
           
           // Set the new article ID to highlight it
           setNewArticleId(remainingArticles[index].message_id);
