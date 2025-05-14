@@ -1,19 +1,15 @@
 import React from 'react';
 import './App.css';
-import LinkList from './components/LinkList';
+import BusinessWireList from './components/BusinessWireList';
 
 function App() {
   return (
     <div className="App">
-      <header className="App-header">
-        <h1>Stream Simulation</h1>
-        <p>DynamoDB Link Viewer</p>
-      </header>
       <main className="App-main">
-        <LinkList />
+        <BusinessWireList />
       </main>
       <footer className="App-footer">
-        <p>&copy; {new Date().getFullYear()} Stream Simulation</p>
+        <p>&copy; {new Date().getFullYear()} Business Wire Simulation</p>
       </footer>
     </div>
   );
