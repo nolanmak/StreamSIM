@@ -3,16 +3,28 @@ import { fetchItemsWithValidUrls } from '../services/dynamoDbService';
 import './BusinessWireList.css';
 
 const BusinessWireList = () => {
-  const [articles, setArticles] = useState([]);
+  const [allArticles, setAllArticles] = useState([]);
+  const [displayedArticles, setDisplayedArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [newArticleId, setNewArticleId] = useState(null);
 
   useEffect(() => {
     const getArticles = async () => {
       try {
         setLoading(true);
         const items = await fetchItemsWithValidUrls();
-        setArticles(items);
+        setAllArticles(items);
+        
+        // Initially display only the first 5 articles with timestamps
+        if (items && items.length > 0) {
+          const initialArticles = items.slice(0, 5).map(article => ({
+            ...article,
+            publishedAt: new Date().toLocaleTimeString()
+          }));
+          setDisplayedArticles(initialArticles);
+        }
+        
         setLoading(false);
       } catch (err) {
         console.error('Error fetching articles:', err);
@@ -23,6 +35,48 @@ const BusinessWireList = () => {
 
     getArticles();
   }, []);
+  
+  // Effect to gradually publish remaining articles at random intervals
+  useEffect(() => {
+    if (!loading && allArticles.length > 5) {
+      const remainingArticles = [...allArticles.slice(5)];
+      
+      const publishArticle = (index) => {
+        if (index >= remainingArticles.length) return;
+        
+        const randomInterval = Math.floor(Math.random() * (45 - 5 + 1) + 5) * 1000; // Between 5-45 seconds
+        
+        setTimeout(() => {
+          // Add timestamp to the article being published
+          const articleWithTimestamp = {
+            ...remainingArticles[index],
+            publishedAt: new Date().toLocaleTimeString()
+          };
+          
+          setDisplayedArticles(prev => [
+            articleWithTimestamp,
+            ...prev
+          ]);
+          
+          // Set the new article ID to highlight it
+          setNewArticleId(remainingArticles[index].message_id);
+          
+          // Remove highlight after 5 seconds
+          setTimeout(() => {
+            setNewArticleId(null);
+          }, 5000);
+          
+          // Schedule next article publication
+          publishArticle(index + 1);
+        }, randomInterval);
+        
+        console.log(`Next article will be published in ${randomInterval/1000} seconds`);
+      };
+      
+      // Start publishing process
+      publishArticle(0);
+    }
+  }, [loading, allArticles]);
 
   if (loading) {
     return <div className="bw-loading">Loading latest news...</div>;
@@ -32,7 +86,7 @@ const BusinessWireList = () => {
     return <div className="bw-error">{error}</div>;
   }
 
-  if (articles.length === 0) {
+  if (displayedArticles.length === 0) {
     return <div className="bw-no-articles">No articles found.</div>;
   }
 
@@ -44,14 +98,14 @@ const BusinessWireList = () => {
       </div>
       
       <div className="bw-content">
-        {articles.map((article) => (
+        {displayedArticles.map((article) => (
           <div 
             key={article.message_id} 
-            className="relative py-6 lg:py-[34px] border-b-[1px] border-gray300 break-words"
+            className={`relative py-6 lg:py-[34px] border-b-[1px] border-gray300 break-words ${article.message_id === newArticleId ? 'new-article' : ''}`}
           >
             <h2 className="text-primary">
               <a 
-                href={`https://www.businesswire.com${article.link}`} 
+                href={article.link} 
                 className="font-figtree"
                 target="_blank" 
                 rel="noopener noreferrer"
@@ -65,6 +119,7 @@ const BusinessWireList = () => {
             <div className="bw-metadata">
               <span className="bw-date">{new Date().toLocaleDateString()}</span>
               <span className="bw-location">{article.location || 'NEW YORK'}</span>
+              <span className="bw-published">Published at {article.publishedAt}</span>
             </div>
           </div>
         ))}

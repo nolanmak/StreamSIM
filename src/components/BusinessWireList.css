@@ -1,4 +1,34 @@
 /* BusinessWireList.css */
+@keyframes fadeBackground {
+  0% { background-color: rgba(0, 85, 165, 0.1); }
+  100% { background-color: transparent; }
+}
+
+.new-article {
+  animation: fadeBackground 5s ease-out;
+  position: relative;
+}
+
+.new-article::before {
+  content: 'NEW';
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background-color: #0055a5;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 3px 8px;
+  border-radius: 4px;
+  opacity: 1;
+  animation: fadeOut 5s ease-out;
+}
+
+@keyframes fadeOut {
+  0% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
 .bw-container {
   max-width: 1200px;
   margin: 0 auto;
@@ -81,8 +111,13 @@
   margin-top: 12px;
 }
 
-.bw-date, .bw-location {
+.bw-date, .bw-location, .bw-published {
   font-weight: 500;
+}
+
+.bw-published {
+  color: #0055a5;
+  margin-left: 16px;
 }
 
 .bw-loading, .bw-error, .bw-no-articles {
