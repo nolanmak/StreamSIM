@@ -1,0 +1,14 @@
+{
+  "name": "stream-simulation-lambda",
+  "version": "1.0.0",
+  "description": "AWS Lambda function for Stream Simulation DynamoDB access",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "deploy": "aws lambda update-function-code --function-name stream-simulation-function --zip-file fileb://deployment.zip",
+    "build": "zip -r deployment.zip . -x \"*.git*\" \"node_modules/.bin/*\""
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1480.0"
+  }
+}
