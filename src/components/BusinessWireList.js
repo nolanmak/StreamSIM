@@ -26,7 +26,13 @@ const BusinessWireList = () => {
             const publishDate = new Date(timestamp);
             return {
               ...article,
-              publishedAt: publishDate.toLocaleTimeString(),
+              publishedAt: publishDate.toLocaleTimeString('en-US', { 
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                fractionalSecondDigits: 3
+              }),
               publishTimestamp: timestamp
             };
           });
@@ -62,7 +68,13 @@ const BusinessWireList = () => {
           const now = new Date();
           const articleWithTimestamp = {
             ...remainingArticles[index],
-            publishedAt: now.toLocaleTimeString(),
+            publishedAt: now.toLocaleTimeString('en-US', {
+              hour12: false,
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              fractionalSecondDigits: 3
+            }),
             publishTimestamp: now.getTime() // Store timestamp for sorting
           };
           
