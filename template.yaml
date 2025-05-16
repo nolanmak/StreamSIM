@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Resources:
+  ArticleCyclingRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "Rule to trigger article cycling every 5-45 seconds"
+      ScheduleExpression: "rate(5 seconds)"
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt ArticleCyclingFunction.Arn
+          Id: "ArticleCyclingFunction"
+
+  ArticleCyclingPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !Ref ArticleCyclingFunction
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt ArticleCyclingRule.Arn
+
+  ArticleCyclingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/
+      Handler: index.handler
+      Runtime: nodejs18.x
+      Timeout: 30
+      MemorySize: 128
+      Environment:
+        Variables:
+          NODE_ENV: production
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MessagesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StateTable
+
+  MessagesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: IRAutomation-DataStorageStack-MessagesTable05B58A27-16054E0SDUCWI
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: message_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: message_id
+          KeyType: HASH
+
+  StateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: businesswire_state
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+Outputs:
+  ArticleCyclingFunction:
+    Description: "Lambda Function ARN"
+    Value: !GetAtt ArticleCyclingFunction.Arn
+  ArticleCyclingFunctionRole:
+    Description: "Implicit IAM Role created for the Lambda function"
+    Value: !GetAtt ArticleCyclingFunctionRole.Arn 

@@ -3,10 +3,9 @@
  * This uses a secure AWS Lambda function to access DynamoDB
  * @returns {Promise<Array>} - Array of items with valid URLs
  */
-export const fetchItemsWithValidUrls = async () => {
+const fetchItemsWithValidUrls = async () => {
   try {
     // Use the base URL of the API Gateway stage
-    // Based on our testing, we'll use the LFG stage endpoint
     const apiUrl = 'https://cvuu38def1.execute-api.us-east-1.amazonaws.com/lfg';
     
     console.log('Fetching data from:', apiUrl);
@@ -38,3 +37,5 @@ export const fetchItemsWithValidUrls = async () => {
     throw error;
   }
 };
+
+export { fetchItemsWithValidUrls };

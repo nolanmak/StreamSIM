@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { fetchItemsWithValidUrls } from '../services/dynamoDbService';
-import scrapingSimulator from '../services/scrapingSimulator';
+import articleService from '../services/articleService';
 import './BusinessWireList.css';
 
 const ITEMS_PER_PAGE = 10;
@@ -17,24 +17,7 @@ const BusinessWireList = () => {
       try {
         setLoading(true);
         const items = await fetchItemsWithValidUrls();
-        
-        // Process initial articles with timestamps
-        const initialArticles = items.map(article => {
-          const now = new Date();
-          return {
-            ...article,
-            publishedAt: now.toLocaleTimeString('en-US', {
-              hour12: false,
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
-              fractionalSecondDigits: 3
-            }),
-            publishTimestamp: now.getTime()
-          };
-        });
-        
-        setArticles(initialArticles);
+        setArticles(items);
         setLoading(false);
       } catch (err) {
         console.error('Error fetching initial articles:', err);
@@ -45,27 +28,35 @@ const BusinessWireList = () => {
 
     getInitialArticles();
 
-    // Subscribe to the scraping simulator
-    const unsubscribe = scrapingSimulator.subscribe((newArticles) => {
+    // Subscribe to the article service
+    const unsubscribe = articleService.subscribe((updatedArticles) => {
       setArticles(prevArticles => {
-        const updated = [...newArticles, ...prevArticles];
+        const updated = [...prevArticles];
+        updatedArticles.forEach(newArticle => {
+          const index = updated.findIndex(a => a.message_id === newArticle.message_id);
+          if (index >= 0) {
+            updated[index] = newArticle;
+          } else {
+            updated.unshift(newArticle);
+          }
+        });
         return updated.sort((a, b) => b.publishTimestamp - a.publishTimestamp);
       });
 
       // Highlight new articles
-      newArticles.forEach(article => {
+      updatedArticles.forEach(article => {
         setNewArticleId(article.message_id);
         setTimeout(() => setNewArticleId(null), 5000);
       });
     });
 
-    // Start the scraping simulator
-    scrapingSimulator.start();
+    // Start the article service
+    articleService.start();
 
     // Cleanup
     return () => {
       unsubscribe();
-      scrapingSimulator.stop();
+      articleService.stop();
     };
   }, []);
 
