@@ -130,3 +130,39 @@
 .bw-error {
   color: #ef4444;
 }
+
+.bw-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem 0;
+  margin-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.bw-pagination-button {
+  padding: 0.5rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  background-color: white;
+  color: #374151;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.bw-pagination-button:hover:not(:disabled) {
+  background-color: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.bw-pagination-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.bw-pagination-info {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
