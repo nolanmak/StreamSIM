@@ -11,14 +11,28 @@ const BusinessWireList = () => {
   const [error, setError] = useState(null);
   const [newArticleId, setNewArticleId] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [loadingMessage, setLoadingMessage] = useState('Loading latest news...');
 
   useEffect(() => {
+    console.log('BusinessWireList component mounted');
+    
     const getInitialArticles = async () => {
       try {
         setLoading(true);
+        setLoadingMessage('Fetching articles from API...');
+        console.log('Fetching initial articles');
+        
         const items = await fetchItemsWithValidUrls();
-        setArticles(items);
-        setLoading(false);
+        console.log(`Received ${items?.length || 0} initial articles`);
+        
+        if (items && items.length > 0) {
+          setArticles(items);
+          setLoading(false);
+        } else {
+          console.warn('No initial articles received');
+          setLoadingMessage('No articles found. Starting article service...');
+          // We'll let the article service handle it
+        }
       } catch (err) {
         console.error('Error fetching initial articles:', err);
         setError('Failed to load articles. Please try again later.');
@@ -30,6 +44,8 @@ const BusinessWireList = () => {
 
     // Subscribe to the article service
     const unsubscribe = articleService.subscribe((updatedArticles) => {
+      console.log(`Received ${updatedArticles.length} updated articles from service`);
+      
       setArticles(prevArticles => {
         const updated = [...prevArticles];
         updatedArticles.forEach(newArticle => {
@@ -40,7 +56,22 @@ const BusinessWireList = () => {
             updated.unshift(newArticle);
           }
         });
-        return updated.sort((a, b) => b.publishTimestamp - a.publishTimestamp);
+        
+        const sorted = updated.sort((a, b) => {
+          // Ensure we have timestamps to compare
+          const timestampA = a.publishTimestamp || 0;
+          const timestampB = b.publishTimestamp || 0;
+          return timestampB - timestampA;
+        });
+        
+        console.log(`Total articles after update: ${sorted.length}`);
+        
+        // If we were in loading state and now have articles, exit loading state
+        if (loading && sorted.length > 0) {
+          setLoading(false);
+        }
+        
+        return sorted;
       });
 
       // Highlight new articles
@@ -51,10 +82,12 @@ const BusinessWireList = () => {
     });
 
     // Start the article service
+    console.log('Starting article service');
     articleService.start();
 
     // Cleanup
     return () => {
+      console.log('BusinessWireList component unmounting');
       unsubscribe();
       articleService.stop();
     };
@@ -71,7 +104,7 @@ const BusinessWireList = () => {
   };
 
   if (loading) {
-    return <div className="bw-loading">Loading latest news...</div>;
+    return <div className="bw-loading">{loadingMessage}</div>;
   }
 
   if (error) {
@@ -79,7 +112,7 @@ const BusinessWireList = () => {
   }
 
   if (articles.length === 0) {
-    return <div className="bw-no-articles">No articles found.</div>;
+    return <div className="bw-no-articles">No articles found. Please check your connection and try again.</div>;
   }
 
   return (
@@ -111,7 +144,7 @@ const BusinessWireList = () => {
             <div className="bw-metadata">
               <span className="bw-date">{new Date().toLocaleDateString()}</span>
               <span className="bw-location">{article.location || 'NEW YORK'}</span>
-              <span className="bw-published">Published at {article.publishedAt}</span>
+              <span className="bw-published">Published at {article.publishedAt || 'Unknown'}</span>
             </div>
           </div>
         ))}
@@ -127,11 +160,11 @@ const BusinessWireList = () => {
           Previous
         </button>
         <span className="bw-pagination-info">
-          Page {currentPage} of {totalPages}
+          Page {currentPage} of {totalPages || 1}
         </span>
         <button 
           onClick={() => handlePageChange(currentPage + 1)}
-          disabled={currentPage === totalPages}
+          disabled={currentPage === totalPages || totalPages === 0}
           className="bw-pagination-button"
         >
           Next

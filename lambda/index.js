@@ -9,8 +9,8 @@ AWS.config.update({
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
 
 // Table names
-const MESSAGES_TABLE = 'IRAutomation-DataStorageStack-MessagesTable05B58A27-16054E0SDUCWI';
-const STATE_TABLE = 'SimState';
+const TABLE_NAME = 'IRAutomation-DataStorageStack-MessagesTable05B58A27-16054E0SDUCWI';
+const STATE_TABLE = 'SimState';  // Just the table name, not the ARN
 
 // Configuration
 const CYCLE_INTERVAL_MS = 15000; // 15 seconds between article updates
@@ -35,10 +35,10 @@ const createResponse = (statusCode, body) => {
     statusCode: statusCode,
     headers: {
       'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': '*',
-      'Access-Control-Allow-Headers': '*',
-      'Access-Control-Max-Age': '86400'
+      'Access-Control-Allow-Origin': '*', // Allow any origin
+      'Access-Control-Allow-Methods': '*', // Allow all methods
+      'Access-Control-Allow-Headers': '*', // Allow all headers
+      'Access-Control-Max-Age': '86400' // Cache preflight request for 24 hours
     },
     body: JSON.stringify(body)
   };
@@ -47,12 +47,14 @@ const createResponse = (statusCode, body) => {
 // Function to get items with valid URLs from DynamoDB
 const getItemsWithValidUrls = async () => {
   try {
+    // Scan the DynamoDB table
     const params = {
-      TableName: MESSAGES_TABLE
+      TableName: TABLE_NAME
     };
     
     const data = await dynamoDB.scan(params).promise();
     
+    // Filter items to only include those with valid URLs
     const itemsWithValidUrls = data.Items.filter(item => {
       return item.link && isValidUrl(item.link);
     });
@@ -105,7 +107,7 @@ const cycleOneArticle = async () => {
     });
     
     const updateParams = {
-      TableName: MESSAGES_TABLE,
+      TableName: TABLE_NAME,
       Key: { message_id: currentArticle.message_id },
       UpdateExpression: 'SET publishedAt = :publishedAt, publishTimestamp = :publishTimestamp',
       ExpressionAttributeValues: {
@@ -193,15 +195,21 @@ const continuousCycleArticles = async () => {
 
 // Lambda handler function
 exports.handler = async (event) => {
+  // Log the incoming event for debugging
   console.log('Event:', JSON.stringify(event));
   
   try {
+    // Special command for continuous cycling
+    if (event.source === 'continuous-cycle-command') {
+      console.log('Continuous cycle command detected');
+      return await continuousCycleArticles();
+    }
+    
     // Handle direct Lambda test invocations (console test events)
     if (!event.path && !event.httpMethod) {
-      console.log('Direct invocation detected - starting continuous cycling');
-      // For direct invocations, run continuously until timeout
-      const result = await continuousCycleArticles();
-      return createResponse(200, result);
+      console.log('Direct invocation detected - returning all valid links');
+      const items = await getItemsWithValidUrls();
+      return createResponse(200, items);
     }
     
     // Handle OPTIONS requests for CORS preflight
@@ -209,6 +217,7 @@ exports.handler = async (event) => {
       return createResponse(200, {});
     }
     
+    // Parse the path from the event
     const path = event.path || '';
     const httpMethod = event.httpMethod || 'GET';
     console.log('Processing path:', path, 'with method:', httpMethod);
@@ -218,34 +227,22 @@ exports.handler = async (event) => {
       return createResponse(200, { status: 'ok' });
     }
     
-    // Cycle articles endpoint - single cycle
-    if (path.endsWith('/cycle') && httpMethod === 'POST') {
+    // Cycle endpoint
+    if (path === '/cycle' && httpMethod === 'POST') {
+      console.log('Cycling one article');
       const result = await cycleOneArticle();
       return createResponse(200, result);
     }
     
-    // Continuous cycling endpoint
-    if (path.endsWith('/continuous-cycle') && httpMethod === 'POST') {
-      // Start continuous cycling in the background
-      // Note: This will continue running even after the response is sent
-      // Lambda will run until timeout or until the function completes
-      continuousCycleArticles().catch(error => {
-        console.error('Background cycling error:', error);
-      });
-      
-      return createResponse(202, { 
-        message: 'Continuous cycling started',
-        info: 'Will run for up to 15 minutes or until Lambda timeout'
-      });
-    }
-    
-    // Default endpoint to get items with valid URLs
+    // API endpoint to get items with valid URLs - handle any path
+    // For API Gateway, just respond to any GET request with the data
     if (httpMethod === 'GET') {
       console.log('Handling GET request, returning all valid links');
       const items = await getItemsWithValidUrls();
       return createResponse(200, items);
     }
     
+    // Default response for unknown routes
     return createResponse(404, { error: 'Not Found' });
   } catch (error) {
     console.error('Error processing request:', error);

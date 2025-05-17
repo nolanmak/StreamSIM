@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Business Wire news simulation",
   "main": "index.js",
-  "type": "commonjs",
   "scripts": {
     "start": "react-scripts start",
     "dev": "react-scripts start",
