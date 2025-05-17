@@ -18,7 +18,13 @@ const fetchItemsWithValidUrls = async () => {
         'Content-Type': 'application/json'
       },
       // Add cache control to prevent HTTP/2 protocol issues
-      cache: 'no-cache'
+      cache: 'no-cache',
+      // Add keepalive to prevent connection issues
+      keepalive: true,
+      // Add credentials mode to prevent CORS issues
+      credentials: 'omit',
+      // Add mode to prevent CORS issues
+      mode: 'cors'
     });
     
     console.log('Response status:', response.status);

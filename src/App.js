@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import './App.css';
 import BusinessWireList from './components/BusinessWireList';
+import DynamicHead from './components/DynamicHead';
 import { fetchItemsWithValidUrls } from './services/dynamoDbService';
 
 function App() {
@@ -23,6 +24,8 @@ function App() {
 
   return (
     <div className="App">
+      <DynamicHead />
+      
       <button 
         onClick={toggleDebug}
         style={{

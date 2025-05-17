@@ -31,8 +31,11 @@
       ]
     }
   ],
-  "routes": [
-    { "handle": "filesystem" },
-    { "src": "/.*", "dest": "/index.html" }
+  "rewrites": [
+    { "source": "/favicon.ico", "destination": "/favicon.ico" },
+    { "source": "/manifest.json", "destination": "/manifest.json" },
+    { "source": "/%PUBLIC_URL%/favicon.ico", "destination": "/favicon.ico" },
+    { "source": "/%PUBLIC_URL%/manifest.json", "destination": "/manifest.json" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

@@ -1,0 +1,4 @@
+/%PUBLIC_URL%/favicon.ico /favicon.ico 200
+/%PUBLIC_URL%/manifest.json /manifest.json 200
+/%PUBLIC_URL%/* /:splat 200
+/* /index.html 200 
