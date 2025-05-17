@@ -54,6 +54,10 @@ class ArticleService {
     while (this.isPolling) {
       try {
         console.log('Polling for new articles...');
+        
+        // Add exponential backoff for retries
+        const backoffTime = Math.min(this.pollInterval * Math.pow(2, this.retryCount), 30000);
+        
         const newArticles = await fetchItemsWithValidUrls();
         console.log(`Received ${newArticles.length} articles from API`);
         
@@ -65,7 +69,7 @@ class ArticleService {
             this.stop();
             break;
           }
-          await new Promise(resolve => setTimeout(resolve, this.pollInterval));
+          await new Promise(resolve => setTimeout(resolve, backoffTime));
           continue;
         }
         
@@ -102,11 +106,19 @@ class ArticleService {
       } catch (error) {
         console.error('Error polling for updates:', error);
         this.retryCount++;
+        
+        // Add exponential backoff for errors
+        const backoffTime = Math.min(this.pollInterval * Math.pow(2, this.retryCount), 30000);
+        
         if (this.retryCount > this.maxRetries) {
           console.error(`Max retries (${this.maxRetries}) exceeded. Stopping polling.`);
           this.stop();
           break;
         }
+        
+        // Wait longer between retries when errors occur
+        await new Promise(resolve => setTimeout(resolve, backoffTime));
+        continue;
       }
 
       // Wait before next poll

@@ -61,7 +61,7 @@ const BusinessWireList = () => {
   useEffect(() => {
     console.log('BusinessWireList component mounted');
     
-    const getInitialArticles = async () => {
+    const getInitialArticles = async (retryCount = 0) => {
       try {
         setLoading(true);
         setLoadingMessage('Fetching articles from API...');
@@ -89,8 +89,20 @@ const BusinessWireList = () => {
         }
       } catch (err) {
         console.error('Error fetching initial articles:', err);
-        setError('Failed to load articles. Please try again later.');
-        setLoading(false);
+        
+        // Add retry logic with exponential backoff
+        if (retryCount < 3) {
+          const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 8000);
+          console.log(`Retrying in ${backoffTime}ms (attempt ${retryCount + 1}/3)`);
+          setLoadingMessage(`Connection issue. Retrying in ${Math.round(backoffTime/1000)} seconds...`);
+          
+          setTimeout(() => {
+            getInitialArticles(retryCount + 1);
+          }, backoffTime);
+        } else {
+          setError('Failed to load articles. Please refresh the page or try again later.');
+          setLoading(false);
+        }
       }
     };
 

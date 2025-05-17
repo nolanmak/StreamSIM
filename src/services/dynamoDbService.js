@@ -15,7 +15,10 @@ const fetchItemsWithValidUrls = async () => {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-      }
+        'Content-Type': 'application/json'
+      },
+      // Add cache control to prevent HTTP/2 protocol issues
+      cache: 'no-cache'
     });
     
     console.log('Response status:', response.status);
