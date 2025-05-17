@@ -1,4 +1,4 @@
-import { fetchNextArticle, fetchCurrentCycleArticles, markArticleAsConsumed, resetCycle } from './dynamoDbService';
+import { fetchNextArticle, fetchCurrentCycleArticles, resetCycle } from './dynamoDbService';
 
 class ArticleService {
   constructor() {
@@ -9,7 +9,6 @@ class ArticleService {
     this.retryCount = 0;
     this.maxRetries = 3;
     this.cycleCount = 0;
-    this.lastConsumedIndex = -1;
     this.totalArticles = 0;
   }
 
@@ -49,13 +48,6 @@ class ArticleService {
       console.log('Subscriber removed from article service');
       this.subscribers.delete(callback);
     };
-  }
-  
-  async markCurrentArticleAsConsumed() {
-    if (this.lastConsumedIndex >= 0) {
-      console.log(`Marking article at index ${this.lastConsumedIndex} as consumed`);
-      await markArticleAsConsumed(this.lastConsumedIndex);
-    }
   }
 
   notifySubscribers(isNewArticle = false, isNewCycle = false, currentArticleId = null) {
@@ -118,12 +110,6 @@ class ArticleService {
         if (cycleArticles && cycleArticles.length > 0) {
           console.log(`Received ${cycleArticles.length} articles from current cycle`);
           this.articles = cycleArticles;
-        }
-        
-        // Mark as consumed
-        if (metadata && metadata.currentIndex !== undefined) {
-          this.lastConsumedIndex = metadata.currentIndex;
-          await this.markCurrentArticleAsConsumed();
         }
         
         // Notify subscribers

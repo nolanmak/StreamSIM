@@ -205,7 +205,9 @@ const getNextArticle = async () => {
       currentIndex,
       cycleCount,
       totalArticles: articles.length,
-      articlesMap
+      articlesMap,
+      lastConsumedIndex: currentIndex, // Automatically mark as consumed
+      lastConsumedTimestamp: Date.now()
     });
     
     console.log(`Returning article ${currentIndex + 1} of ${articles.length}: ${currentArticle.message_id} (Cycle #${cycleCount})`);
@@ -277,35 +279,6 @@ exports.handler = async (event) => {
     if (path === '/cycle-articles' && httpMethod === 'GET') {
       const cycleArticles = await getCurrentCycleArticles();
       return createResponse(200, { cycleArticles });
-    }
-    
-    // Mark article as consumed endpoint
-    if (path === '/consumed' && httpMethod === 'POST') {
-      try {
-        // Parse the request body
-        const body = event.body ? JSON.parse(event.body) : {};
-        const { index } = body;
-        
-        if (index === undefined) {
-          return createResponse(400, { error: 'Missing index parameter' });
-        }
-        
-        // Update the app state in DynamoDB
-        await dynamoDB.put({
-          TableName: STATE_TABLE,
-          Item: {
-            id: 'app_state',
-            lastConsumedIndex: index,
-            timestamp: Date.now()
-          }
-        }).promise();
-        
-        console.log(`App marked article at index ${index} as consumed`);
-        return createResponse(200, { success: true, consumedIndex: index });
-      } catch (error) {
-        console.error('Error marking article as consumed:', error);
-        return createResponse(500, { error: 'Failed to mark article as consumed' });
-      }
     }
     
     // Reset cycle endpoint
