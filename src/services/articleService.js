@@ -1,5 +1,25 @@
 import { fetchItemsWithValidUrls } from './dynamoDbService';
 
+// Helper function to format time with hour properly displayed
+const formatTimeWithHour = (date) => {
+  const options = {
+    timeZone: 'America/New_York',
+    hour12: true,
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit'
+  };
+  
+  let formattedTime = date.toLocaleTimeString('en-US', options);
+  
+  // Ensure the hour is included
+  if (formattedTime.indexOf(':') === 0) {
+    formattedTime = `12${formattedTime}`;
+  }
+  
+  return formattedTime;
+};
+
 class ArticleService {
   constructor() {
     this.subscribers = new Set();
@@ -21,20 +41,17 @@ class ArticleService {
       console.log(`Loaded ${this.articles.length} articles initially`);
       
       if (this.articles && this.articles.length > 0) {
-        // Process initial articles with current timestamps
+        // Only add timestamps to articles that don't have them
         this.articles = this.articles.map(article => {
-          const now = new Date();
-          return {
-            ...article,
-            publishedAt: now.toLocaleTimeString('en-US', {
-              timeZone: 'America/New_York',
-              hour12: true,
-              hour: 'numeric',
-              minute: '2-digit',
-              second: '2-digit'
-            }),
-            publishTimestamp: now.getTime()
-          };
+          if (!article.publishTimestamp || !article.publishedAt) {
+            const now = new Date();
+            return {
+              ...article,
+              publishedAt: formatTimeWithHour(now),
+              publishTimestamp: now.getTime()
+            };
+          }
+          return article;
         });
         
         // Notify subscribers of initial articles
@@ -88,31 +105,15 @@ class ArticleService {
         // Reset retry count on successful fetch
         this.retryCount = 0;
         
-        // Process all articles with current timestamp
-        const processedArticles = newArticles.map(article => {
-          const now = new Date();
-          return {
-            ...article,
-            publishedAt: now.toLocaleTimeString('en-US', {
-              timeZone: 'America/New_York',
-              hour12: true,
-              hour: 'numeric',
-              minute: '2-digit',
-              second: '2-digit'
-            }),
-            publishTimestamp: now.getTime()
-          };
-        });
-        
         // Find articles with new timestamps or new articles
-        const updatedArticles = processedArticles.filter(newArticle => {
+        const updatedArticles = newArticles.filter(newArticle => {
           const existingArticle = this.articles.find(a => a.message_id === newArticle.message_id);
           const isNew = !existingArticle;
-          // Consider all articles as updated since we're using current timestamp
-          const isUpdated = true;
+          const isUpdated = existingArticle && 
+                           existingArticle.publishTimestamp !== newArticle.publishTimestamp;
           
           if (isNew) console.log(`Found new article: ${newArticle.message_id}`);
-          if (isUpdated) console.log(`Updated article: ${newArticle.message_id}`);
+          if (isUpdated) console.log(`Updated article: ${newArticle.message_id} with timestamp: ${newArticle.publishedAt}`);
           
           return isNew || isUpdated;
         });
@@ -121,7 +122,7 @@ class ArticleService {
           console.log(`Found ${updatedArticles.length} updated articles`);
           
           // Update our local articles
-          this.articles = processedArticles;
+          this.articles = newArticles;
           
           // Notify subscribers
           this.subscribers.forEach(callback => {

@@ -5,6 +5,29 @@ import './BusinessWireList.css';
 
 const ITEMS_PER_PAGE = 10;
 
+// Helper function to format time with hour properly displayed
+const formatDisplayTime = (timeString) => {
+  if (!timeString) return 'Unknown';
+  
+  // If the timeString already has AM/PM, it's already properly formatted
+  if (timeString.includes('AM') || timeString.includes('PM')) {
+    return timeString;
+  }
+  
+  // Try to parse the time string
+  try {
+    const [hours, minutes, seconds] = timeString.split(':');
+    const hour = parseInt(hours, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12; // Convert 0 to 12 for 12 AM
+    
+    return `${displayHour}:${minutes}:${seconds} ${ampm}`;
+  } catch (e) {
+    console.error('Error formatting time:', e);
+    return timeString; // Return original if parsing fails
+  }
+};
+
 const BusinessWireList = () => {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -142,9 +165,14 @@ const BusinessWireList = () => {
               <p>{article.description || 'No description available'}</p>
             </div>
             <div className="bw-metadata">
-              <span className="bw-date">{new Date().toLocaleDateString()}</span>
+              <span className="bw-date">{new Date().toLocaleDateString('en-US', {
+                timeZone: 'America/New_York',
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+              })}</span>
               <span className="bw-location">{article.location || 'NEW YORK'}</span>
-              <span className="bw-published">Published at {article.publishedAt || 'Unknown'}</span>
+              <span className="bw-published">Published at {formatDisplayTime(article.publishedAt)}</span>
             </div>
           </div>
         ))}
