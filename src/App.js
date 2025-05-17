@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import './App.css';
 import BusinessWireList from './components/BusinessWireList';
 import DynamicHead from './components/DynamicHead';
-import { fetchItemsWithValidUrls } from './services/dynamoDbService';
+import { fetchNextArticle, fetchCurrentCycleArticles } from './services/dynamoDbService';
 
 function App() {
   const [debugInfo, setDebugInfo] = useState(null);
@@ -11,13 +11,22 @@ function App() {
   const testApi = async () => {
     try {
       setDebugInfo('Testing API connection...');
-      const response = await fetchItemsWithValidUrls();
-      const { articles, cycleInfo } = response;
+      
+      // Fetch next article
+      const nextArticleData = await fetchNextArticle();
+      
+      // Fetch cycle articles
+      const cycleArticles = await fetchCurrentCycleArticles();
       
       setDebugInfo(
-        `API returned ${articles.length} items. 
-        First item: ${articles.length > 0 ? JSON.stringify(articles[0], null, 2) : 'None'}
-        Cycle info: ${cycleInfo ? JSON.stringify(cycleInfo, null, 2) : 'None'}`
+        `Next article: 
+        ${nextArticleData.article ? JSON.stringify(nextArticleData.article.message_id, null, 2) : 'None'}
+        
+        Metadata: 
+        ${nextArticleData.metadata ? JSON.stringify(nextArticleData.metadata, null, 2) : 'None'}
+        
+        Cycle Articles: 
+        ${cycleArticles.length} articles in current cycle`
       );
     } catch (error) {
       setDebugInfo(`API Error: ${error.message}`);

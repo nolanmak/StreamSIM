@@ -29,6 +29,12 @@
   80% { opacity: 1; }
   100% { opacity: 0; }
 }
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 .bw-container {
   max-width: 1200px;
   margin: 0 auto;
@@ -53,6 +59,38 @@
 .bw-tagline {
   font-size: 16px;
   color: #4b5563;
+}
+
+.bw-controls {
+  margin: 20px 0;
+  display: flex;
+  justify-content: center;
+}
+
+.bw-reset-button {
+  padding: 8px 16px;
+  background-color: #f44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.bw-reset-button:hover {
+  background-color: #d32f2f;
+}
+
+.bw-loading-spinner {
+  margin: 20px auto;
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(0, 85, 165, 0.2);
+  border-top: 4px solid #0055a5;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
 }
 
 .bw-content {

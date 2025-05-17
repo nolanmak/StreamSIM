@@ -1,16 +1,15 @@
 /**
- * Fetches all items from the DynamoDB table that have a valid URL in their link property
- * This uses a secure AWS Lambda function to access DynamoDB
- * @returns {Promise<Object>} - Object containing articles array and cycle information
+ * Fetches the next article from the Lambda function
+ * @returns {Promise<Object>} - Object containing the next article, metadata, and cycle articles
  */
-const fetchItemsWithValidUrls = async () => {
+const fetchNextArticle = async () => {
   try {
     // Use the base URL of the API Gateway stage
     const apiUrl = 'https://b6zibzuazj.execute-api.us-east-1.amazonaws.com/LFG/LinkSimulation';
     
-    console.log('Fetching data from:', apiUrl);
+    console.log('Fetching next article from:', apiUrl);
     
-    // Call the Lambda API to get items with valid URLs
+    // Call the Lambda API to get the next article
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
@@ -38,54 +37,60 @@ const fetchItemsWithValidUrls = async () => {
     
     // Parse the JSON response
     const data = await response.json();
-    console.log('Data received type:', typeof data);
+    console.log('Next article data:', data);
     
-    // Validate the response structure
-    if (!data) {
-      console.error('API returned null or undefined data');
-      return { articles: [], cycleInfo: null };
-    }
-    
-    // Handle the new response format where articles are in data.articles
-    if (data.articles && Array.isArray(data.articles)) {
-      console.log('Using new response format with articles property');
-      console.log('Articles length:', data.articles.length);
-      console.log('Cycle info:', data.cycleResult);
-      
-      return {
-        articles: data.articles,
-        cycleInfo: data.cycleResult || null
-      };
-    }
-    
-    // Handle legacy format where the response is just an array of articles
-    if (Array.isArray(data)) {
-      console.log('Using legacy response format (direct array)');
-      console.log('Data length:', data.length);
-      
-      return {
-        articles: data,
-        cycleInfo: null
-      };
-    }
-    
-    // Handle DynamoDB format with Items property
-    if (data.Items && Array.isArray(data.Items)) {
-      console.log('Using Items property from response');
-      
-      return {
-        articles: data.Items,
-        cycleInfo: null
-      };
-    }
-    
-    // If we can't determine the format, return empty
-    console.error('Unknown API response format:', data);
-    return { articles: [], cycleInfo: null };
-    
+    return data;
   } catch (error) {
-    console.error('Error fetching items from Lambda API:', error);
-    return { articles: [], cycleInfo: null }; // Return empty object instead of throwing to prevent app crashes
+    console.error('Error fetching next article:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fetches all articles for the current cycle
+ * @returns {Promise<Array>} - Array of articles for the current cycle
+ */
+const fetchCurrentCycleArticles = async () => {
+  try {
+    // Use the base URL of the API Gateway stage
+    const apiUrl = 'https://b6zibzuazj.execute-api.us-east-1.amazonaws.com/LFG/LinkSimulation/cycle-articles';
+    
+    console.log('Fetching cycle articles from:', apiUrl);
+    
+    // Call the Lambda API to get all articles for the current cycle
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      // Add cache control to prevent HTTP/2 protocol issues
+      cache: 'no-cache',
+      // Add keepalive to prevent connection issues
+      keepalive: true,
+      // Add credentials mode to prevent CORS issues
+      credentials: 'omit',
+      // Add mode to prevent CORS issues
+      mode: 'cors'
+    });
+    
+    console.log('Response status:', response.status);
+    
+    // Check if the response is ok
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`API error: ${response.status}`);
+    }
+    
+    // Parse the JSON response
+    const data = await response.json();
+    console.log('Cycle articles data:', data);
+    
+    return data.cycleArticles || [];
+  } catch (error) {
+    console.error('Error fetching cycle articles:', error);
+    return [];
   }
 };
 
@@ -140,19 +145,19 @@ const markArticleAsConsumed = async (index) => {
 };
 
 /**
- * Fetches only the current article from the DynamoDB table
- * @returns {Promise<Object>} - The current article
+ * Resets the cycle in the Lambda function
+ * @returns {Promise<boolean>} - Whether the operation was successful
  */
-const fetchCurrentArticle = async () => {
+const resetCycle = async () => {
   try {
     // Use the base URL of the API Gateway stage
-    const apiUrl = 'https://b6zibzuazj.execute-api.us-east-1.amazonaws.com/LFG/LinkSimulation/current';
+    const apiUrl = 'https://b6zibzuazj.execute-api.us-east-1.amazonaws.com/LFG/LinkSimulation/reset';
     
-    console.log('Fetching current article from:', apiUrl);
+    console.log('Resetting cycle');
     
-    // Call the Lambda API to get the current article
+    // Call the Lambda API to reset the cycle
     const response = await fetch(apiUrl, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json'
@@ -167,24 +172,24 @@ const fetchCurrentArticle = async () => {
       mode: 'cors'
     });
     
-    console.log('Response status:', response.status);
+    console.log('Reset cycle response status:', response.status);
     
     // Check if the response is ok
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Error response:', errorText);
-      throw new Error(`API error: ${response.status}`);
+      console.error('Error resetting cycle:', errorText);
+      return false;
     }
     
     // Parse the JSON response
     const data = await response.json();
-    console.log('Current article received:', data);
+    console.log('Reset cycle response:', data);
     
-    return data;
+    return true;
   } catch (error) {
-    console.error('Error fetching current article:', error);
-    return null; // Return null on error
+    console.error('Error resetting cycle:', error);
+    return false;
   }
 };
 
-export { fetchItemsWithValidUrls, markArticleAsConsumed, fetchCurrentArticle };
+export { fetchNextArticle, fetchCurrentCycleArticles, markArticleAsConsumed, resetCycle };

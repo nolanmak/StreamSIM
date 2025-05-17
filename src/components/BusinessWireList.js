@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { fetchItemsWithValidUrls } from '../services/dynamoDbService';
 import articleService from '../services/articleService';
 import './BusinessWireList.css';
 
@@ -13,73 +12,34 @@ const BusinessWireList = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [loadingMessage, setLoadingMessage] = useState('Loading latest news...');
   const [cycleCount, setCycleCount] = useState(0);
-
-  // Sort articles by timestamp, newest first
-  const sortArticlesByTimestamp = (articlesToSort) => {
-    return [...articlesToSort].sort((a, b) => {
-      // Sort by publishTimestamp (newest first)
-      return (b.publishTimestamp || 0) - (a.publishTimestamp || 0);
-    });
-  };
+  const [totalArticles, setTotalArticles] = useState(0);
 
   useEffect(() => {
     console.log('BusinessWireList component mounted');
     
-    const getInitialArticles = async (retryCount = 0) => {
-      try {
-        setLoading(true);
-        setLoadingMessage('Fetching articles from API...');
-        console.log('Fetching initial articles');
-        
-        const { articles: initialArticles, cycleInfo } = await fetchItemsWithValidUrls();
-        console.log(`Received ${initialArticles?.length || 0} initial articles`);
-        
-        if (initialArticles && initialArticles.length > 0) {
-          // Sort articles by timestamp, newest first
-          const sortedArticles = sortArticlesByTimestamp(initialArticles);
-          setArticles(sortedArticles);
-          
-          // Set initial cycle count if available
-          if (cycleInfo) {
-            setCycleCount(cycleInfo.cycleCount || 0);
-          }
-          
-          setLoading(false);
-        } else {
-          console.warn('No initial articles received');
-          setLoadingMessage('No articles found. Starting article service...');
-          // We'll let the article service handle it
-        }
-      } catch (err) {
-        console.error('Error fetching initial articles:', err);
-        
-        // Add retry logic with exponential backoff
-        if (retryCount < 3) {
-          const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 8000);
-          console.log(`Retrying in ${backoffTime}ms (attempt ${retryCount + 1}/3)`);
-          setLoadingMessage(`Connection issue. Retrying in ${Math.round(backoffTime/1000)} seconds...`);
-          
-          setTimeout(() => {
-            getInitialArticles(retryCount + 1);
-          }, backoffTime);
-        } else {
-          setError('Failed to load articles. Please refresh the page or try again later.');
-          setLoading(false);
-        }
-      }
-    };
-
-    getInitialArticles();
-
     // Subscribe to the article service
     const unsubscribe = articleService.subscribe((updatedArticles, metadata) => {
       console.log(`Received ${updatedArticles.length} articles from service`);
+      console.log('Metadata:', metadata);
+      
+      // If this is a reset, clear the articles
+      if (metadata && metadata.isReset) {
+        console.log('Cycle reset detected, clearing articles');
+        setArticles([]);
+        setCycleCount(0);
+        setTotalArticles(0);
+        return;
+      }
       
       // Check if we've completed a cycle
       if (metadata && metadata.isNewCycle) {
         console.log('New cycle detected, updating cycle count');
         setCycleCount(metadata.cycleCount || 0);
-        // We no longer reset articles on new cycle
+      }
+      
+      // Update total articles count if available
+      if (metadata && metadata.totalArticles) {
+        setTotalArticles(metadata.totalArticles);
       }
       
       // Highlight the current article if there is one
@@ -88,7 +48,7 @@ const BusinessWireList = () => {
         setTimeout(() => setNewArticleId(null), 5000);
       }
       
-      // Articles should already be sorted by the service, but ensure sorting here too
+      // Articles are already sorted by the Lambda
       setArticles(updatedArticles);
       if (loading) {
         setLoading(false);
@@ -105,7 +65,7 @@ const BusinessWireList = () => {
       unsubscribe();
       articleService.stop();
     };
-  }, []);
+  }, [loading]);
 
   // Find the current article
   const currentArticle = articles.find(a => a.isCurrent);
@@ -117,11 +77,19 @@ const BusinessWireList = () => {
   const currentArticles = articles.slice(startIndex, endIndex);
 
   // Calculate cycling progress
-  const cycleProgress = articles.length > 0 ? 
-    Math.round((currentArticle?.cycleIndex || 0) / articles.length * 100) : 0;
+  const cycleProgress = totalArticles > 0 ? 
+    Math.round((currentArticle?.cycleIndex || 0) / totalArticles * 100) : 0;
 
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage);
+  };
+
+  const handleResetCycle = async () => {
+    setLoading(true);
+    setLoadingMessage('Resetting cycle...');
+    await articleService.resetCycle();
+    setCurrentPage(1);
+    setLoading(false);
   };
 
   if (loading) {
@@ -133,7 +101,12 @@ const BusinessWireList = () => {
   }
 
   if (articles.length === 0) {
-    return <div className="bw-no-articles">No articles found. Please check your connection and try again.</div>;
+    return (
+      <div className="bw-no-articles">
+        <p>No articles found. Waiting for articles to be published...</p>
+        <div className="bw-loading-spinner"></div>
+      </div>
+    );
   }
 
   return (
@@ -141,7 +114,15 @@ const BusinessWireList = () => {
       <div className="bw-header">
         <h1>Business Wire</h1>
         <p className="bw-tagline">Where Companies Get Their News Heard</p>
-        {articles.length > 0 && (
+        <div className="bw-controls">
+          <button 
+            onClick={handleResetCycle}
+            className="bw-reset-button"
+          >
+            Reset Cycle
+          </button>
+        </div>
+        {totalArticles > 0 && (
           <div className="bw-cycle-progress">
             <div className="bw-cycle-bar">
               <div 
@@ -151,7 +132,7 @@ const BusinessWireList = () => {
               ></div>
             </div>
             <div className="bw-cycle-text">
-              Cycle #{cycleCount} - Progress: {cycleProgress}% ({currentArticle?.cycleIndex || 0}/{articles.length})
+              Cycle #{cycleCount} - Progress: {cycleProgress}% ({currentArticle?.cycleIndex || 0}/{totalArticles})
             </div>
           </div>
         )}
