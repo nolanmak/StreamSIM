@@ -99,11 +99,11 @@ const cycleOneArticle = async () => {
     // Update the article with a new timestamp
     const now = new Date();
     const formattedTime = now.toLocaleTimeString('en-US', {
-      hour12: false,
-      hour: '2-digit',
+      timeZone: 'America/New_York',
+      hour12: true,
+      hour: 'numeric',
       minute: '2-digit',
-      second: '2-digit',
-      fractionalSecondDigits: 3
+      second: '2-digit'
     });
     
     const updateParams = {

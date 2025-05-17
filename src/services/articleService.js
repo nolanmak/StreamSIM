@@ -21,23 +21,20 @@ class ArticleService {
       console.log(`Loaded ${this.articles.length} articles initially`);
       
       if (this.articles && this.articles.length > 0) {
-        // Process initial articles with timestamps if they don't have them
+        // Process initial articles with current timestamps
         this.articles = this.articles.map(article => {
-          if (!article.publishTimestamp) {
-            const now = new Date();
-            return {
-              ...article,
-              publishedAt: article.publishedAt || now.toLocaleTimeString('en-US', {
-                hour12: false,
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                fractionalSecondDigits: 3
-              }),
-              publishTimestamp: article.publishTimestamp || now.getTime()
-            };
-          }
-          return article;
+          const now = new Date();
+          return {
+            ...article,
+            publishedAt: now.toLocaleTimeString('en-US', {
+              timeZone: 'America/New_York',
+              hour12: true,
+              hour: 'numeric',
+              minute: '2-digit',
+              second: '2-digit'
+            }),
+            publishTimestamp: now.getTime()
+          };
         });
         
         // Notify subscribers of initial articles
@@ -91,15 +88,31 @@ class ArticleService {
         // Reset retry count on successful fetch
         this.retryCount = 0;
         
-        // Find articles with new timestamps
-        const updatedArticles = newArticles.filter(newArticle => {
+        // Process all articles with current timestamp
+        const processedArticles = newArticles.map(article => {
+          const now = new Date();
+          return {
+            ...article,
+            publishedAt: now.toLocaleTimeString('en-US', {
+              timeZone: 'America/New_York',
+              hour12: true,
+              hour: 'numeric',
+              minute: '2-digit',
+              second: '2-digit'
+            }),
+            publishTimestamp: now.getTime()
+          };
+        });
+        
+        // Find articles with new timestamps or new articles
+        const updatedArticles = processedArticles.filter(newArticle => {
           const existingArticle = this.articles.find(a => a.message_id === newArticle.message_id);
           const isNew = !existingArticle;
-          const isUpdated = existingArticle && 
-                           existingArticle.publishTimestamp !== newArticle.publishTimestamp;
+          // Consider all articles as updated since we're using current timestamp
+          const isUpdated = true;
           
           if (isNew) console.log(`Found new article: ${newArticle.message_id}`);
-          if (isUpdated) console.log(`Found updated article: ${newArticle.message_id}`);
+          if (isUpdated) console.log(`Updated article: ${newArticle.message_id}`);
           
           return isNew || isUpdated;
         });
@@ -108,7 +121,7 @@ class ArticleService {
           console.log(`Found ${updatedArticles.length} updated articles`);
           
           // Update our local articles
-          this.articles = newArticles;
+          this.articles = processedArticles;
           
           // Notify subscribers
           this.subscribers.forEach(callback => {

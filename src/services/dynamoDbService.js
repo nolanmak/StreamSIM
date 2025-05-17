@@ -50,24 +50,25 @@ const fetchItemsWithValidUrls = async () => {
       return [];
     }
     
-    // Process the data to ensure all items have required fields
+    // Process the data to ensure all items have required fields with current timestamp
     const processedData = data.map(item => {
-      // Ensure each item has publishTimestamp and publishedAt
-      if (!item.publishTimestamp || !item.publishedAt) {
-        const now = new Date();
-        return {
-          ...item,
-          publishedAt: item.publishedAt || now.toLocaleTimeString('en-US', {
-            hour12: false,
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            fractionalSecondDigits: 3
-          }),
-          publishTimestamp: item.publishTimestamp || now.getTime()
-        };
-      }
-      return item;
+      // Always set current timestamp for all articles in Eastern Time
+      const now = new Date();
+      
+      // Format time in Eastern Time (ET)
+      const formattedTime = now.toLocaleTimeString('en-US', {
+        timeZone: 'America/New_York',
+        hour12: true,
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+      
+      return {
+        ...item,
+        publishedAt: formattedTime,
+        publishTimestamp: now.getTime()
+      };
     });
     
     console.log('Processed data sample:', processedData.length > 0 ? processedData[0] : 'No items');
