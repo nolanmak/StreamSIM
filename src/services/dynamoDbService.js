@@ -59,8 +59,7 @@ const fetchItemsWithValidUrls = async () => {
       return [];
     }
     
-    // Return the data as-is without modifying timestamps
-    // Timestamp handling will be done in the BusinessWireList component
+    // Return the data from the backend which already has timestamps
     console.log('Processed data sample:', data.length > 0 ? data[0] : 'No items');
     
     return data;
@@ -70,4 +69,54 @@ const fetchItemsWithValidUrls = async () => {
   }
 };
 
-export { fetchItemsWithValidUrls };
+/**
+ * Marks an article as consumed by the app
+ * @param {number} index - The index of the article that was consumed
+ * @returns {Promise<boolean>} - Whether the operation was successful
+ */
+const markArticleAsConsumed = async (index) => {
+  try {
+    // Use the base URL of the API Gateway stage
+    const apiUrl = 'https://b6zibzuazj.execute-api.us-east-1.amazonaws.com/LFG/LinkSimulation/consumed';
+    
+    console.log(`Marking article at index ${index} as consumed`);
+    
+    // Call the Lambda API to mark the article as consumed
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ index }),
+      // Add cache control to prevent HTTP/2 protocol issues
+      cache: 'no-cache',
+      // Add keepalive to prevent connection issues
+      keepalive: true,
+      // Add credentials mode to prevent CORS issues
+      credentials: 'omit',
+      // Add mode to prevent CORS issues
+      mode: 'cors'
+    });
+    
+    console.log('Mark consumed response status:', response.status);
+    
+    // Check if the response is ok
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error marking as consumed:', errorText);
+      return false;
+    }
+    
+    // Parse the JSON response
+    const data = await response.json();
+    console.log('Mark consumed response:', data);
+    
+    return true;
+  } catch (error) {
+    console.error('Error marking article as consumed:', error);
+    return false;
+  }
+};
+
+export { fetchItemsWithValidUrls, markArticleAsConsumed };

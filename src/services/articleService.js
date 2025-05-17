@@ -1,4 +1,4 @@
-import { fetchItemsWithValidUrls } from './dynamoDbService';
+import { fetchItemsWithValidUrls, markArticleAsConsumed } from './dynamoDbService';
 
 class ArticleService {
   constructor() {
@@ -8,6 +8,8 @@ class ArticleService {
     this.pollInterval = 5000; // Poll every 5 seconds
     this.retryCount = 0;
     this.maxRetries = 3;
+    this.lastCycleCount = 0;
+    this.lastConsumedIndex = -1;
   }
 
   async start() {
@@ -21,6 +23,13 @@ class ArticleService {
       console.log(`Loaded ${this.articles.length} articles initially`);
       
       if (this.articles && this.articles.length > 0) {
+        // Find the current article and mark it as consumed
+        const currentArticle = this.articles.find(a => a.isCurrent);
+        if (currentArticle && currentArticle.cycleIndex !== undefined) {
+          this.lastConsumedIndex = currentArticle.cycleIndex;
+          await this.markCurrentArticleAsConsumed();
+        }
+        
         // Notify subscribers of initial articles
         this.subscribers.forEach(callback => callback(this.articles));
       } else {
@@ -47,6 +56,13 @@ class ArticleService {
       console.log('Subscriber removed from article service');
       this.subscribers.delete(callback);
     };
+  }
+  
+  async markCurrentArticleAsConsumed() {
+    if (this.lastConsumedIndex >= 0) {
+      console.log(`Marking article at index ${this.lastConsumedIndex} as consumed`);
+      await markArticleAsConsumed(this.lastConsumedIndex);
+    }
   }
 
   async poll() {
@@ -76,33 +92,40 @@ class ArticleService {
         // Reset retry count on successful fetch
         this.retryCount = 0;
         
-        // Find articles with new timestamps or new articles
-        const updatedArticles = newArticles.filter(newArticle => {
-          const existingArticle = this.articles.find(a => a.message_id === newArticle.message_id);
-          const isNew = !existingArticle;
-          const isUpdated = existingArticle && 
-                           existingArticle.publishTimestamp !== newArticle.publishTimestamp;
-          
-          if (isNew) console.log(`Found new article: ${newArticle.message_id}`);
-          if (isUpdated) console.log(`Updated article: ${newArticle.message_id}`);
-          
-          return isNew || isUpdated;
-        });
-
-        if (updatedArticles.length > 0) {
-          console.log(`Found ${updatedArticles.length} updated articles`);
-          
-          // Update our local articles
-          this.articles = newArticles;
-          
-          // Notify subscribers
-          this.subscribers.forEach(callback => {
-            console.log('Notifying subscriber of updates');
-            callback(updatedArticles);
-          });
-        } else {
-          console.log('No updated articles found');
+        // Detect cycle completion by checking the current article
+        const currentArticle = newArticles.find(a => a.isCurrent);
+        const currentCycleCount = this.getCycleCount(newArticles);
+        const isNewCycle = currentCycleCount > this.lastCycleCount;
+        
+        if (isNewCycle) {
+          console.log(`New cycle detected: ${currentCycleCount}`);
+          this.lastCycleCount = currentCycleCount;
         }
+        
+        // Check if the current article has changed
+        if (currentArticle && 
+            currentArticle.cycleIndex !== undefined && 
+            currentArticle.cycleIndex !== this.lastConsumedIndex) {
+          
+          // Update our consumed index and mark as consumed
+          this.lastConsumedIndex = currentArticle.cycleIndex;
+          await this.markCurrentArticleAsConsumed();
+        }
+        
+        // Update our local articles
+        this.articles = newArticles;
+        
+        // Notify subscribers with metadata
+        const metadata = {
+          isNewCycle,
+          cycleCount: currentCycleCount,
+          currentArticle: currentArticle ? currentArticle.message_id : null
+        };
+        
+        this.subscribers.forEach(callback => {
+          console.log('Notifying subscriber of updates');
+          callback(newArticles, metadata);
+        });
       } catch (error) {
         console.error('Error polling for updates:', error);
         this.retryCount++;
@@ -125,6 +148,30 @@ class ArticleService {
       console.log(`Waiting ${this.pollInterval}ms before next poll`);
       await new Promise(resolve => setTimeout(resolve, this.pollInterval));
     }
+  }
+  
+  // Helper to get the cycle count from articles
+  getCycleCount(articles) {
+    if (!articles || articles.length === 0) return 0;
+    
+    // Try to find an article with cycleCount property
+    const currentArticle = articles.find(a => a.isCurrent);
+    if (currentArticle && currentArticle.cycleCount !== undefined) {
+      return currentArticle.cycleCount;
+    }
+    
+    // If not found, check if first article has cycleIndex 0 and last article has a high index
+    // This indicates we're at the start of a new cycle
+    const firstArticle = articles[0];
+    const lastArticle = articles[articles.length - 1];
+    
+    if (firstArticle && lastArticle && 
+        firstArticle.cycleIndex === 0 && 
+        lastArticle.cycleIndex === articles.length - 1) {
+      return this.lastCycleCount + 1;
+    }
+    
+    return this.lastCycleCount;
   }
 }
 

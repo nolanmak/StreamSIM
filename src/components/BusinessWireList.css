@@ -166,3 +166,52 @@
   font-size: 0.875rem;
   color: #6b7280;
 }
+
+/* Add CSS for the cycling progress bar */
+.bw-cycle-progress {
+  margin: 10px 0;
+  padding: 5px 10px;
+  background-color: #f8f8f8;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.bw-cycle-bar {
+  height: 8px;
+  background-color: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 5px;
+}
+
+.bw-cycle-fill {
+  height: 100%;
+  background-color: #4caf50;
+  transition: width 0.5s ease-in-out;
+}
+
+.bw-cycle-text {
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+}
+
+.current-article {
+  position: relative;
+  border-left: 4px solid #4caf50;
+  padding-left: 16px;
+  background-color: rgba(76, 175, 80, 0.05);
+}
+
+.current-article::after {
+  content: 'CURRENT';
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background-color: #4caf50;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 3px 8px;
+  border-radius: 4px;
+}

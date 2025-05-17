@@ -14,7 +14,9 @@ const STATE_TABLE = 'SimState';  // Just the table name, not the ARN
 
 // Configuration
 const CYCLE_INTERVAL_MS = 15000; // 15 seconds between article updates
-const MAX_RUNTIME_MS = 15 * 60 * 1000 - 5000; // 15 minutes minus 5 seconds buffer
+const MAX_RUNTIME_MS = 14 * 60 * 1000; // 14 minutes to safely avoid Lambda's 15-minute timeout
+const MAX_WAIT_TIME_MS = 10000; // Maximum time to wait for app consumption (10 seconds)
+const POLL_INTERVAL_MS = 1000; // How often to check if app has consumed the current article
 
 // Helper function to validate URL
 const isValidUrl = (string) => {
@@ -28,6 +30,18 @@ const isValidUrl = (string) => {
 
 // Sleep function
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Format timestamp in Eastern Time
+const formatTimeET = (timestamp) => {
+  const date = new Date(timestamp);
+  return date.toLocaleTimeString('en-US', {
+    timeZone: 'America/New_York',
+    hour12: true,
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+};
 
 // Create a response object with CORS headers for all origins
 const createResponse = (statusCode, body) => {
@@ -66,17 +80,127 @@ const getItemsWithValidUrls = async () => {
   }
 };
 
+// Function to get or create timestamps for articles
+const getOrCreateTimestamps = async (articles) => {
+  try {
+    // Get the timestamp table data
+    const params = {
+      TableName: STATE_TABLE,
+      Key: { id: 'timestamps' }
+    };
+    
+    let timestampData = {};
+    
+    try {
+      const result = await dynamoDB.get(params).promise();
+      if (result.Item && result.Item.timestamps) {
+        timestampData = result.Item.timestamps;
+      }
+    } catch (error) {
+      console.log('No timestamp data found, will create new timestamps');
+    }
+    
+    const now = Date.now();
+    const updatedTimestamps = { ...timestampData };
+    
+    // Add timestamps to each article
+    const articlesWithTimestamps = articles.map((article, index) => {
+      // Use existing timestamp or create new one
+      if (!updatedTimestamps[article.message_id]) {
+        updatedTimestamps[article.message_id] = {
+          publishTimestamp: now - (index * 1000), // Stagger timestamps by 1 second
+          cycleIndex: index
+        };
+      }
+      
+      const timestamp = updatedTimestamps[article.message_id];
+      
+      return {
+        ...article,
+        publishTimestamp: timestamp.publishTimestamp,
+        publishedAt: formatTimeET(timestamp.publishTimestamp),
+        cycleIndex: index, // Always update the cycle index
+        isCurrent: false // Default to false, will be updated for current article
+      };
+    });
+    
+    // Save the updated timestamps
+    try {
+      await dynamoDB.put({
+        TableName: STATE_TABLE,
+        Item: {
+          id: 'timestamps',
+          timestamps: updatedTimestamps
+        }
+      }).promise();
+    } catch (error) {
+      console.error('Error saving timestamps:', error);
+    }
+    
+    return articlesWithTimestamps;
+  } catch (error) {
+    console.error('Error handling timestamps:', error);
+    // Return original articles if there's an error
+    return articles.map((article, index) => ({
+      ...article,
+      cycleIndex: index
+    }));
+  }
+};
+
+// Function to check if the app has consumed the current article
+const checkAppConsumption = async (currentIndex) => {
+  try {
+    const params = {
+      TableName: STATE_TABLE,
+      Key: { id: 'app_state' }
+    };
+    
+    const result = await dynamoDB.get(params).promise();
+    if (result.Item && result.Item.lastConsumedIndex === currentIndex) {
+      console.log(`App has consumed article at index ${currentIndex}`);
+      return true;
+    }
+    
+    console.log(`App has not yet consumed article at index ${currentIndex}`);
+    return false;
+  } catch (error) {
+    console.error('Error checking app consumption:', error);
+    return false; // Assume not consumed on error
+  }
+};
+
+// Function to wait for app consumption with timeout
+const waitForAppConsumption = async (currentIndex) => {
+  const startTime = Date.now();
+  
+  while (Date.now() - startTime < MAX_WAIT_TIME_MS) {
+    if (await checkAppConsumption(currentIndex)) {
+      return true;
+    }
+    
+    // Wait before checking again
+    await sleep(POLL_INTERVAL_MS);
+  }
+  
+  console.log(`Timeout waiting for app consumption of index ${currentIndex}`);
+  return false; // Timed out
+};
+
 // Function to cycle a single article
-const cycleOneArticle = async () => {
+const cycleOneArticle = async (waitForConsumption = false) => {
   try {
     // Get all articles
-    const articles = await getItemsWithValidUrls();
+    let articles = await getItemsWithValidUrls();
     
     if (!articles || articles.length === 0) {
       console.log('No articles found');
       return { message: 'No articles found to cycle' };
     }
-
+    
+    // Add timestamps to articles
+    articles = await getOrCreateTimestamps(articles);
+    
     // Get the current index from state table
     const getIndexParams = {
       TableName: STATE_TABLE,
@@ -84,29 +208,57 @@ const cycleOneArticle = async () => {
     };
 
     let currentIndex = 0;
+    let cycleCount = 0;
+    let isNewCycle = false;
+    let prevIndex = -1;
+    
     try {
       const stateData = await dynamoDB.get(getIndexParams).promise();
       if (stateData.Item) {
-        currentIndex = (stateData.Item.currentIndex + 1) % articles.length;
+        // Store previous index for consumption check
+        prevIndex = stateData.Item.currentIndex || 0;
+        
+        // Increment index and wrap around if we reach the end
+        currentIndex = (prevIndex + 1) % articles.length;
+        cycleCount = stateData.Item.cycleCount || 0;
+        
+        // Detect if we've completed a cycle
+        if (currentIndex === 0 && prevIndex > 0) {
+          cycleCount++;
+          isNewCycle = true;
+          console.log(`Completed cycle #${cycleCount}`);
+        }
       }
     } catch (error) {
       console.log('No state found or error reading state, starting from index 0:', error);
     }
+    
+    // If we're waiting for consumption and this isn't the first article,
+    // wait for the app to consume the previous article
+    if (waitForConsumption && prevIndex >= 0) {
+      console.log(`Waiting for app to consume article at index ${prevIndex}`);
+      const consumed = await waitForAppConsumption(prevIndex);
+      if (!consumed) {
+        console.log('Proceeding anyway after timeout');
+      }
+    }
 
     // Get the current article
     const currentArticle = articles[currentIndex];
+    currentArticle.isCurrent = true; // Mark this as the current article
     
-    // No longer updating the article in the Messages table
-    // Just log which article would be "updated" next
-    console.log(`Article ${currentArticle.message_id} would be next to update`);
+    // Log which article is being processed
+    console.log(`Processing article ${currentIndex + 1} of ${articles.length}: ${currentArticle.message_id} (Cycle #${cycleCount})`);
 
     // Update the current index in the state table
     const updateStateParams = {
       TableName: STATE_TABLE,
       Key: { id: 'current' },
-      UpdateExpression: 'SET currentIndex = :currentIndex',
+      UpdateExpression: 'SET currentIndex = :currentIndex, cycleCount = :cycleCount, lastUpdated = :lastUpdated',
       ExpressionAttributeValues: {
-        ':currentIndex': currentIndex
+        ':currentIndex': currentIndex,
+        ':cycleCount': cycleCount,
+        ':lastUpdated': Date.now()
       }
     };
 
@@ -119,7 +271,9 @@ const cycleOneArticle = async () => {
           TableName: STATE_TABLE,
           Item: {
             id: 'current',
-            currentIndex: currentIndex
+            currentIndex: currentIndex,
+            cycleCount: cycleCount,
+            lastUpdated: Date.now()
           }
         };
         await dynamoDB.put(putStateParams).promise();
@@ -131,12 +285,12 @@ const cycleOneArticle = async () => {
     console.log(`Updated state for article ${currentArticle.message_id}`);
     return {
       message: 'State updated successfully',
-      article: {
-        message_id: currentArticle.message_id,
-        title: currentArticle.title
-      },
+      article: currentArticle,
       currentIndex: currentIndex,
-      totalArticles: articles.length
+      totalArticles: articles.length,
+      cycleCount: cycleCount,
+      isNewCycle: isNewCycle,
+      allArticles: articles
     };
   } catch (error) {
     console.error('Error cycling articles:', error);
@@ -154,13 +308,13 @@ const continuousCycleArticles = async () => {
   
   while (Date.now() - startTime < MAX_RUNTIME_MS) {
     try {
-      lastResult = await cycleOneArticle();
+      // Pass true to wait for app consumption
+      lastResult = await cycleOneArticle(true);
       cycleCount++;
-      console.log(`Cycle #${cycleCount} complete. Waiting ${CYCLE_INTERVAL_MS}ms before next cycle.`);
-      await sleep(CYCLE_INTERVAL_MS);
+      console.log(`Cycle #${cycleCount} complete. Waiting for app consumption before next cycle.`);
     } catch (error) {
       console.error('Error during cycle:', error);
-      await sleep(5000); // Wait 5 seconds before retrying after an error
+      await sleep(5000); // Still keep sleep for error recovery
     }
   }
   
@@ -189,7 +343,8 @@ exports.handler = async (event) => {
     if (!event.path && !event.httpMethod) {
       console.log('Direct invocation detected - returning all valid links');
       const items = await getItemsWithValidUrls();
-      return createResponse(200, items);
+      const itemsWithTimestamps = await getOrCreateTimestamps(items);
+      return createResponse(200, itemsWithTimestamps);
     }
     
     // Handle OPTIONS requests for CORS preflight
@@ -207,6 +362,35 @@ exports.handler = async (event) => {
       return createResponse(200, { status: 'ok' });
     }
     
+    // Mark article as consumed endpoint
+    if (path === '/consumed' && httpMethod === 'POST') {
+      try {
+        // Parse the request body
+        const body = event.body ? JSON.parse(event.body) : {};
+        const { index } = body;
+        
+        if (index === undefined) {
+          return createResponse(400, { error: 'Missing index parameter' });
+        }
+        
+        // Update the app state in DynamoDB
+        await dynamoDB.put({
+          TableName: STATE_TABLE,
+          Item: {
+            id: 'app_state',
+            lastConsumedIndex: index,
+            timestamp: Date.now()
+          }
+        }).promise();
+        
+        console.log(`App marked article at index ${index} as consumed`);
+        return createResponse(200, { success: true, consumedIndex: index });
+      } catch (error) {
+        console.error('Error marking article as consumed:', error);
+        return createResponse(500, { error: 'Failed to mark article as consumed' });
+      }
+    }
+    
     // Cycle endpoint
     if (path === '/cycle' && httpMethod === 'POST') {
       console.log('Cycling one article');
@@ -219,7 +403,8 @@ exports.handler = async (event) => {
     if (httpMethod === 'GET') {
       console.log('Handling GET request, returning all valid links');
       const items = await getItemsWithValidUrls();
-      return createResponse(200, items);
+      const itemsWithTimestamps = await getOrCreateTimestamps(items);
+      return createResponse(200, itemsWithTimestamps);
     }
     
     // Default response for unknown routes

@@ -5,10 +5,6 @@ import './BusinessWireList.css';
 
 const ITEMS_PER_PAGE = 10;
 
-// Create a cache to store timestamps by article ID
-// This ensures timestamps don't change on page refresh
-const timestampCache = {};
-
 const BusinessWireList = () => {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,47 +12,7 @@ const BusinessWireList = () => {
   const [newArticleId, setNewArticleId] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [loadingMessage, setLoadingMessage] = useState('Loading latest news...');
-
-  // Helper function to format timestamps in Eastern Time
-  const formatTimeET = (timestamp) => {
-    if (!timestamp) {
-      const now = new Date();
-      return now.toLocaleTimeString('en-US', {
-        timeZone: 'America/New_York',
-        hour12: true,
-        hour: 'numeric',
-        minute: '2-digit',
-        second: '2-digit'
-      });
-    }
-    
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString('en-US', {
-      timeZone: 'America/New_York',
-      hour12: true,
-      hour: 'numeric',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-  };
-
-  // Helper function to get or create a timestamp for an article
-  const getOrCreateTimestamp = (article) => {
-    if (timestampCache[article.message_id]) {
-      // Use cached timestamp if available
-      return timestampCache[article.message_id];
-    }
-    
-    // Create new timestamp and cache it
-    const now = new Date();
-    const timestamp = {
-      publishedAt: formatTimeET(article.publishTimestamp || now.getTime()),
-      publishTimestamp: article.publishTimestamp || now.getTime()
-    };
-    
-    timestampCache[article.message_id] = timestamp;
-    return timestamp;
-  };
+  const [cycleCount, setCycleCount] = useState(0);
 
   useEffect(() => {
     console.log('BusinessWireList component mounted');
@@ -71,16 +27,7 @@ const BusinessWireList = () => {
         console.log(`Received ${items?.length || 0} initial articles`);
         
         if (items && items.length > 0) {
-          // Set timestamps on the frontend for each article using the cache
-          const articlesWithTimestamps = items.map(article => {
-            const timestamp = getOrCreateTimestamp(article);
-            return {
-              ...article,
-              publishedAt: timestamp.publishedAt,
-              publishTimestamp: timestamp.publishTimestamp
-            };
-          });
-          setArticles(articlesWithTimestamps);
+          setArticles(items);
           setLoading(false);
         } else {
           console.warn('No initial articles received');
@@ -109,41 +56,46 @@ const BusinessWireList = () => {
     getInitialArticles();
 
     // Subscribe to the article service
-    const unsubscribe = articleService.subscribe((updatedArticles) => {
-      console.log(`Received ${updatedArticles.length} updated articles from service`);
+    const unsubscribe = articleService.subscribe((updatedArticles, metadata) => {
+      console.log(`Received ${updatedArticles.length} articles from service`);
+      
+      // Check if we've completed a cycle
+      if (metadata && metadata.isNewCycle) {
+        console.log('New cycle detected, resetting articles');
+        setCycleCount(prev => prev + 1);
+        setArticles(updatedArticles);
+        return;
+      }
       
       setArticles(prevArticles => {
+        // Find the current article
+        const currentArticle = updatedArticles.find(a => a.isCurrent);
+        
+        if (currentArticle) {
+          // Highlight the current article
+          setNewArticleId(currentArticle.message_id);
+          setTimeout(() => setNewArticleId(null), 5000);
+        }
+        
+        // If we have no articles yet, use all the updated articles
+        if (prevArticles.length === 0) {
+          return updatedArticles;
+        }
+        
+        // Otherwise, update the articles with the new data
         const updated = [...prevArticles];
-        updatedArticles.forEach(newArticle => {
-          // Only create new timestamps for articles we haven't seen before
-          const isNew = !timestampCache[newArticle.message_id];
-          const timestamp = getOrCreateTimestamp(newArticle);
-          
-          const formattedArticle = {
-            ...newArticle,
-            publishedAt: timestamp.publishedAt,
-            publishTimestamp: timestamp.publishTimestamp
-          };
-          
-          const index = updated.findIndex(a => a.message_id === formattedArticle.message_id);
+        updatedArticles.forEach(article => {
+          const index = updated.findIndex(a => a.message_id === article.message_id);
           if (index >= 0) {
-            updated[index] = formattedArticle;
+            updated[index] = article;
           } else {
-            updated.unshift(formattedArticle);
-          }
-          
-          // Only highlight truly new articles
-          if (isNew) {
-            setNewArticleId(newArticle.message_id);
-            setTimeout(() => setNewArticleId(null), 5000);
+            updated.push(article);
           }
         });
         
+        // Sort by cycleIndex to maintain order
         const sorted = updated.sort((a, b) => {
-          // Ensure we have timestamps to compare
-          const timestampA = a.publishTimestamp || 0;
-          const timestampB = b.publishTimestamp || 0;
-          return timestampB - timestampA;
+          return (a.cycleIndex || 0) - (b.cycleIndex || 0);
         });
         
         console.log(`Total articles after update: ${sorted.length}`);
@@ -175,6 +127,10 @@ const BusinessWireList = () => {
   const endIndex = startIndex + ITEMS_PER_PAGE;
   const currentArticles = articles.slice(startIndex, endIndex);
 
+  // Calculate cycling progress
+  const cycleProgress = articles.length > 0 ? 
+    Math.round((articles.find(a => a.isCurrent)?.cycleIndex || 0) / articles.length * 100) : 0;
+
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage);
   };
@@ -196,13 +152,27 @@ const BusinessWireList = () => {
       <div className="bw-header">
         <h1>Business Wire</h1>
         <p className="bw-tagline">Where Companies Get Their News Heard</p>
+        {articles.length > 0 && (
+          <div className="bw-cycle-progress">
+            <div className="bw-cycle-bar">
+              <div 
+                className="bw-cycle-fill" 
+                style={{ width: `${cycleProgress}%` }}
+                title={`Cycling progress: ${cycleProgress}%`}
+              ></div>
+            </div>
+            <div className="bw-cycle-text">
+              Cycle #{cycleCount} - Progress: {cycleProgress}% ({articles.find(a => a.isCurrent)?.cycleIndex || 0}/{articles.length})
+            </div>
+          </div>
+        )}
       </div>
       
       <div className="bw-content">
         {currentArticles.map((article) => (
           <div 
             key={article.message_id} 
-            className={`relative py-6 lg:py-[34px] border-b-[1px] border-gray300 break-words ${article.message_id === newArticleId ? 'new-article' : ''}`}
+            className={`relative py-6 lg:py-[34px] border-b-[1px] border-gray300 break-words ${article.message_id === newArticleId ? 'new-article' : ''} ${article.isCurrent ? 'current-article' : ''}`}
           >
             <h2 className="text-primary">
               <a 
