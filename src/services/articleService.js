@@ -56,6 +56,14 @@ class ArticleService {
     }
   }
 
+  // Sort articles by timestamp, newest first
+  sortArticles(articles) {
+    return [...articles].sort((a, b) => {
+      // Sort by publishTimestamp (newest first)
+      return (b.publishTimestamp || 0) - (a.publishTimestamp || 0);
+    });
+  }
+
   async poll() {
     console.log('Starting polling cycle');
     while (this.isPolling) {
@@ -122,10 +130,13 @@ class ArticleService {
             
             // Add to our articles array if not already there
             if (!this.articles.some(a => a.message_id === article.message_id)) {
-              this.articles.unshift(article); // Add to beginning
+              this.articles.push(article);
             }
           }
         }
+        
+        // Sort articles by timestamp, newest first
+        const sortedArticles = this.sortArticles(this.articles);
         
         // Notify subscribers
         const metadata = {
@@ -137,7 +148,7 @@ class ArticleService {
         
         this.subscribers.forEach(callback => {
           console.log('Notifying subscriber of updated articles');
-          callback(this.articles, metadata);
+          callback(sortedArticles, metadata);
         });
       } catch (error) {
         console.error('Error polling for updates:', error);

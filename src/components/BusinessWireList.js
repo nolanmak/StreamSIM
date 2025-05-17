@@ -14,6 +14,14 @@ const BusinessWireList = () => {
   const [loadingMessage, setLoadingMessage] = useState('Loading latest news...');
   const [cycleCount, setCycleCount] = useState(0);
 
+  // Sort articles by timestamp, newest first
+  const sortArticlesByTimestamp = (articlesToSort) => {
+    return [...articlesToSort].sort((a, b) => {
+      // Sort by publishTimestamp (newest first)
+      return (b.publishTimestamp || 0) - (a.publishTimestamp || 0);
+    });
+  };
+
   useEffect(() => {
     console.log('BusinessWireList component mounted');
     
@@ -27,7 +35,9 @@ const BusinessWireList = () => {
         console.log(`Received ${initialArticles?.length || 0} initial articles`);
         
         if (initialArticles && initialArticles.length > 0) {
-          setArticles(initialArticles);
+          // Sort articles by timestamp, newest first
+          const sortedArticles = sortArticlesByTimestamp(initialArticles);
+          setArticles(sortedArticles);
           
           // Set initial cycle count if available
           if (cycleInfo) {
@@ -78,6 +88,7 @@ const BusinessWireList = () => {
         setTimeout(() => setNewArticleId(null), 5000);
       }
       
+      // Articles should already be sorted by the service, but ensure sorting here too
       setArticles(updatedArticles);
       if (loading) {
         setLoading(false);

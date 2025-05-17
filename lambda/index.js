@@ -109,7 +109,9 @@ const getOrCreateTimestamps = async (articles) => {
       // Use existing timestamp or create new one
       if (!updatedTimestamps[article.message_id]) {
         updatedTimestamps[article.message_id] = {
-          publishTimestamp: now - (index * 1000), // Stagger timestamps by 1 second
+          // For new articles, assign timestamps with newer articles having more recent timestamps
+          // This ensures proper sorting by timestamp (newest first)
+          publishTimestamp: now - ((articles.length - index - 1) * 1000), 
           cycleIndex: index
         };
       }
