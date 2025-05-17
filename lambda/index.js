@@ -17,6 +17,7 @@ const CYCLE_INTERVAL_MS = 15000; // 15 seconds between article updates
 const MAX_RUNTIME_MS = 14 * 60 * 1000; // 14 minutes to safely avoid Lambda's 15-minute timeout
 const MAX_WAIT_TIME_MS = 10000; // Maximum time to wait for app consumption (10 seconds)
 const POLL_INTERVAL_MS = 1000; // How often to check if app has consumed the current article
+const AUTO_CYCLE = true; // Flag to enable auto-cycling on main endpoint calls
 
 // Helper function to validate URL
 const isValidUrl = (string) => {
@@ -362,6 +363,43 @@ exports.handler = async (event) => {
       return createResponse(200, { status: 'ok' });
     }
     
+    // Get current article endpoint
+    if (path === '/current' && httpMethod === 'GET') {
+      console.log('Getting current article');
+      try {
+        // Get the current index
+        const stateParams = {
+          TableName: STATE_TABLE,
+          Key: { id: 'current' }
+        };
+        
+        const stateData = await dynamoDB.get(stateParams).promise();
+        if (!stateData.Item) {
+          return createResponse(404, { error: 'No current article found' });
+        }
+        
+        const currentIndex = stateData.Item.currentIndex;
+        
+        // Get all articles and find the current one
+        const items = await getItemsWithValidUrls();
+        const articlesWithTimestamps = await getOrCreateTimestamps(items);
+        
+        if (currentIndex >= articlesWithTimestamps.length) {
+          return createResponse(404, { error: 'Current article index out of bounds' });
+        }
+        
+        // Mark the current article
+        const currentArticle = articlesWithTimestamps[currentIndex];
+        currentArticle.isCurrent = true;
+        
+        console.log(`Returning current article: ${currentArticle.message_id}`);
+        return createResponse(200, currentArticle);
+      } catch (error) {
+        console.error('Error getting current article:', error);
+        return createResponse(500, { error: 'Failed to get current article' });
+      }
+    }
+    
     // Mark article as consumed endpoint
     if (path === '/consumed' && httpMethod === 'POST') {
       try {
@@ -401,10 +439,37 @@ exports.handler = async (event) => {
     // API endpoint to get items with valid URLs - handle any path
     // For API Gateway, just respond to any GET request with the data
     if (httpMethod === 'GET') {
-      console.log('Handling GET request, returning all valid links');
+      console.log('Handling GET request for all valid links');
+      
+      // If AUTO_CYCLE is enabled, cycle to the next article before returning
+      let cycleResult = null;
+      if (AUTO_CYCLE) {
+        console.log('Auto-cycling to next article before returning data');
+        try {
+          cycleResult = await cycleOneArticle(true); // Wait for app consumption
+        } catch (error) {
+          console.error('Error during auto-cycling:', error);
+          // Continue even if cycling fails
+        }
+      }
+      
       const items = await getItemsWithValidUrls();
-      const itemsWithTimestamps = await getOrCreateTimestamps(items);
-      return createResponse(200, itemsWithTimestamps);
+      const articlesWithTimestamps = await getOrCreateTimestamps(items);
+      
+      // If we have cycle results, include them in the response
+      const response = {
+        articles: articlesWithTimestamps
+      };
+      
+      if (cycleResult) {
+        response.cycleResult = {
+          currentIndex: cycleResult.currentIndex,
+          cycleCount: cycleResult.cycleCount,
+          isNewCycle: cycleResult.isNewCycle
+        };
+      }
+      
+      return createResponse(200, response);
     }
     
     // Default response for unknown routes

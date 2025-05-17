@@ -23,11 +23,17 @@ const BusinessWireList = () => {
         setLoadingMessage('Fetching articles from API...');
         console.log('Fetching initial articles');
         
-        const items = await fetchItemsWithValidUrls();
-        console.log(`Received ${items?.length || 0} initial articles`);
+        const { articles: initialArticles, cycleInfo } = await fetchItemsWithValidUrls();
+        console.log(`Received ${initialArticles?.length || 0} initial articles`);
         
-        if (items && items.length > 0) {
-          setArticles(items);
+        if (initialArticles && initialArticles.length > 0) {
+          setArticles(initialArticles);
+          
+          // Set initial cycle count if available
+          if (cycleInfo) {
+            setCycleCount(cycleInfo.cycleCount || 0);
+          }
+          
           setLoading(false);
         } else {
           console.warn('No initial articles received');
@@ -62,7 +68,7 @@ const BusinessWireList = () => {
       // Check if we've completed a cycle
       if (metadata && metadata.isNewCycle) {
         console.log('New cycle detected, updating cycle count');
-        setCycleCount(prev => prev + 1);
+        setCycleCount(metadata.cycleCount || 0);
         // We no longer reset articles on new cycle
       }
       
@@ -73,6 +79,9 @@ const BusinessWireList = () => {
       }
       
       setArticles(updatedArticles);
+      if (loading) {
+        setLoading(false);
+      }
     });
 
     // Start the article service
@@ -87,6 +96,9 @@ const BusinessWireList = () => {
     };
   }, []);
 
+  // Find the current article
+  const currentArticle = articles.find(a => a.isCurrent);
+  
   // Calculate pagination
   const totalPages = Math.ceil(articles.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -95,7 +107,7 @@ const BusinessWireList = () => {
 
   // Calculate cycling progress
   const cycleProgress = articles.length > 0 ? 
-    Math.round((articles.find(a => a.isCurrent)?.cycleIndex || 0) / articles.length * 100) : 0;
+    Math.round((currentArticle?.cycleIndex || 0) / articles.length * 100) : 0;
 
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage);
@@ -128,7 +140,7 @@ const BusinessWireList = () => {
               ></div>
             </div>
             <div className="bw-cycle-text">
-              Cycle #{cycleCount} - Progress: {cycleProgress}% ({articles.find(a => a.isCurrent)?.cycleIndex || 0}/{articles.length})
+              Cycle #{cycleCount} - Progress: {cycleProgress}% ({currentArticle?.cycleIndex || 0}/{articles.length})
             </div>
           </div>
         )}

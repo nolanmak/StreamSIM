@@ -11,8 +11,14 @@ function App() {
   const testApi = async () => {
     try {
       setDebugInfo('Testing API connection...');
-      const data = await fetchItemsWithValidUrls();
-      setDebugInfo(`API returned ${data.length} items. First item: ${data.length > 0 ? JSON.stringify(data[0], null, 2) : 'None'}`);
+      const response = await fetchItemsWithValidUrls();
+      const { articles, cycleInfo } = response;
+      
+      setDebugInfo(
+        `API returned ${articles.length} items. 
+        First item: ${articles.length > 0 ? JSON.stringify(articles[0], null, 2) : 'None'}
+        Cycle info: ${cycleInfo ? JSON.stringify(cycleInfo, null, 2) : 'None'}`
+      );
     } catch (error) {
       setDebugInfo(`API Error: ${error.message}`);
     }

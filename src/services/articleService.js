@@ -1,4 +1,4 @@
-import { fetchItemsWithValidUrls, markArticleAsConsumed } from './dynamoDbService';
+import { fetchItemsWithValidUrls, markArticleAsConsumed, fetchCurrentArticle } from './dynamoDbService';
 
 class ArticleService {
   constructor() {
@@ -10,6 +10,7 @@ class ArticleService {
     this.maxRetries = 3;
     this.lastCycleCount = 0;
     this.lastConsumedIndex = -1;
+    this.seenArticleIds = new Set(); // Track which articles we've seen
   }
 
   async start() {
@@ -17,36 +18,16 @@ class ArticleService {
     this.isPolling = true;
 
     console.log('Article service starting...');
-    // Initial fetch
+    // Initial fetch to get all articles for context
     try {
-      const initialArticles = await fetchItemsWithValidUrls();
-      console.log(`Loaded ${initialArticles.length} articles initially`);
+      const { articles: initialArticles } = await fetchItemsWithValidUrls();
+      console.log(`Loaded ${initialArticles.length} articles initially for context`);
       
-      if (initialArticles && initialArticles.length > 0) {
-        // Store all articles
-        this.articles = initialArticles;
-        
-        // Find the current article and mark it as consumed
-        const currentArticle = initialArticles.find(a => a.isCurrent);
-        if (currentArticle && currentArticle.cycleIndex !== undefined) {
-          this.lastConsumedIndex = currentArticle.cycleIndex;
-          await this.markCurrentArticleAsConsumed();
-        }
-        
-        // Notify subscribers of initial articles
-        this.subscribers.forEach(callback => {
-          const metadata = {
-            isNewCycle: false,
-            cycleCount: this.lastCycleCount,
-            currentArticle: currentArticle ? currentArticle.message_id : null
-          };
-          callback(this.articles, metadata);
-        });
-      } else {
-        console.warn('No articles received from initial fetch');
-      }
+      // We don't store all articles anymore, we'll build up our list as we go
+      this.articles = [];
+      this.seenArticleIds.clear();
       
-      // Start polling
+      // Start polling for articles
       this.poll();
     } catch (error) {
       console.error('Error starting article service:', error);
@@ -79,15 +60,15 @@ class ArticleService {
     console.log('Starting polling cycle');
     while (this.isPolling) {
       try {
-        console.log('Polling for new articles...');
+        console.log('Polling for articles...');
         
         // Add exponential backoff for retries
         const backoffTime = Math.min(this.pollInterval * Math.pow(2, this.retryCount), 30000);
         
-        const newArticles = await fetchItemsWithValidUrls();
-        console.log(`Received ${newArticles.length} articles from API`);
+        // Fetch articles - the Lambda will now automatically cycle to the next article
+        const { articles, cycleInfo } = await fetchItemsWithValidUrls();
         
-        if (!newArticles || newArticles.length === 0) {
+        if (!articles || articles.length === 0) {
           console.warn('No articles received from poll');
           this.retryCount++;
           if (this.retryCount > this.maxRetries) {
@@ -102,39 +83,60 @@ class ArticleService {
         // Reset retry count on successful fetch
         this.retryCount = 0;
         
-        // Find the current article
-        const currentArticle = newArticles.find(a => a.isCurrent);
-        const currentCycleCount = this.getCycleCount(newArticles);
-        const isNewCycle = currentCycleCount > this.lastCycleCount;
+        // Process the articles
+        let isNewCycle = false;
+        let currentArticle = null;
         
-        if (isNewCycle) {
-          console.log(`New cycle detected: ${currentCycleCount}`);
-          this.lastCycleCount = currentCycleCount;
-          // We don't reset articles on new cycle anymore
+        // If we have cycle info, use it
+        if (cycleInfo) {
+          console.log('Received cycle info:', cycleInfo);
+          
+          // Check for cycle count change
+          isNewCycle = cycleInfo.isNewCycle || (cycleInfo.cycleCount > this.lastCycleCount);
+          if (isNewCycle) {
+            console.log(`New cycle detected: ${cycleInfo.cycleCount}`);
+            this.lastCycleCount = cycleInfo.cycleCount;
+          }
+          
+          // Find the current article
+          currentArticle = articles.find(a => a.cycleIndex === cycleInfo.currentIndex);
+          if (currentArticle) {
+            console.log(`Current article is: ${currentArticle.message_id}`);
+            
+            // Mark as consumed
+            this.lastConsumedIndex = cycleInfo.currentIndex;
+            await this.markCurrentArticleAsConsumed();
+          }
         }
         
-        // Check if the current article has changed
-        if (currentArticle && 
-            currentArticle.cycleIndex !== undefined && 
-            currentArticle.cycleIndex !== this.lastConsumedIndex) {
+        // Process each article
+        for (const article of articles) {
+          // Check if this is a new article we haven't seen before
+          const isNewArticle = !this.seenArticleIds.has(article.message_id);
           
-          // Update our consumed index and mark as consumed
-          this.lastConsumedIndex = currentArticle.cycleIndex;
-          await this.markCurrentArticleAsConsumed();
-          
-          // Update our local articles with the current article
-          this.updateCurrentArticle(currentArticle);
+          if (isNewArticle) {
+            console.log(`New article found: ${article.message_id}`);
+            
+            // Add to our seen articles set
+            this.seenArticleIds.add(article.message_id);
+            
+            // Add to our articles array if not already there
+            if (!this.articles.some(a => a.message_id === article.message_id)) {
+              this.articles.unshift(article); // Add to beginning
+            }
+          }
         }
         
-        // Notify subscribers with metadata
+        // Notify subscribers
         const metadata = {
+          isNewArticle: true,
           isNewCycle,
-          cycleCount: currentCycleCount,
-          currentArticle: currentArticle ? currentArticle.message_id : null
+          cycleCount: this.lastCycleCount,
+          currentArticle: currentArticle?.message_id
         };
         
         this.subscribers.forEach(callback => {
-          console.log('Notifying subscriber of updates');
+          console.log('Notifying subscriber of updated articles');
           callback(this.articles, metadata);
         });
       } catch (error) {
@@ -161,54 +163,10 @@ class ArticleService {
     }
   }
   
-  // Helper method to update the current article in our local articles array
-  updateCurrentArticle(currentArticle) {
-    // First, reset any previous current article
-    this.articles = this.articles.map(article => ({
-      ...article,
-      isCurrent: false
-    }));
-    
-    // Then update or add the new current article
-    const index = this.articles.findIndex(a => a.message_id === currentArticle.message_id);
-    if (index >= 0) {
-      // Update existing article
-      this.articles[index] = {
-        ...this.articles[index],
-        ...currentArticle,
-        isCurrent: true
-      };
-    } else {
-      // Add new article
-      this.articles.push({
-        ...currentArticle,
-        isCurrent: true
-      });
-    }
-  }
-  
   // Helper to get the cycle count from articles
-  getCycleCount(articles) {
-    if (!articles || articles.length === 0) return 0;
-    
-    // Try to find an article with cycleCount property
-    const currentArticle = articles.find(a => a.isCurrent);
-    if (currentArticle && currentArticle.cycleCount !== undefined) {
-      return currentArticle.cycleCount;
-    }
-    
-    // If not found, check if first article has cycleIndex 0 and last article has a high index
-    // This indicates we're at the start of a new cycle
-    const firstArticle = articles[0];
-    const lastArticle = articles[articles.length - 1];
-    
-    if (firstArticle && lastArticle && 
-        firstArticle.cycleIndex === 0 && 
-        lastArticle.cycleIndex === articles.length - 1) {
-      return this.lastCycleCount + 1;
-    }
-    
-    return this.lastCycleCount;
+  getCycleCount(article) {
+    if (!article) return 0;
+    return article.cycleCount || 0;
   }
 }
 
