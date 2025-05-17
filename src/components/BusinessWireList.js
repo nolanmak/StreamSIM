@@ -61,52 +61,18 @@ const BusinessWireList = () => {
       
       // Check if we've completed a cycle
       if (metadata && metadata.isNewCycle) {
-        console.log('New cycle detected, resetting articles');
+        console.log('New cycle detected, updating cycle count');
         setCycleCount(prev => prev + 1);
-        setArticles(updatedArticles);
-        return;
+        // We no longer reset articles on new cycle
       }
       
-      setArticles(prevArticles => {
-        // Find the current article
-        const currentArticle = updatedArticles.find(a => a.isCurrent);
-        
-        if (currentArticle) {
-          // Highlight the current article
-          setNewArticleId(currentArticle.message_id);
-          setTimeout(() => setNewArticleId(null), 5000);
-        }
-        
-        // If we have no articles yet, use all the updated articles
-        if (prevArticles.length === 0) {
-          return updatedArticles;
-        }
-        
-        // Otherwise, update the articles with the new data
-        const updated = [...prevArticles];
-        updatedArticles.forEach(article => {
-          const index = updated.findIndex(a => a.message_id === article.message_id);
-          if (index >= 0) {
-            updated[index] = article;
-          } else {
-            updated.push(article);
-          }
-        });
-        
-        // Sort by cycleIndex to maintain order
-        const sorted = updated.sort((a, b) => {
-          return (a.cycleIndex || 0) - (b.cycleIndex || 0);
-        });
-        
-        console.log(`Total articles after update: ${sorted.length}`);
-        
-        // If we were in loading state and now have articles, exit loading state
-        if (loading && sorted.length > 0) {
-          setLoading(false);
-        }
-        
-        return sorted;
-      });
+      // Highlight the current article if there is one
+      if (metadata && metadata.currentArticle) {
+        setNewArticleId(metadata.currentArticle);
+        setTimeout(() => setNewArticleId(null), 5000);
+      }
+      
+      setArticles(updatedArticles);
     });
 
     // Start the article service

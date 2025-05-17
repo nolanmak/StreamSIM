@@ -19,19 +19,29 @@ class ArticleService {
     console.log('Article service starting...');
     // Initial fetch
     try {
-      this.articles = await fetchItemsWithValidUrls();
-      console.log(`Loaded ${this.articles.length} articles initially`);
+      const initialArticles = await fetchItemsWithValidUrls();
+      console.log(`Loaded ${initialArticles.length} articles initially`);
       
-      if (this.articles && this.articles.length > 0) {
+      if (initialArticles && initialArticles.length > 0) {
+        // Store all articles
+        this.articles = initialArticles;
+        
         // Find the current article and mark it as consumed
-        const currentArticle = this.articles.find(a => a.isCurrent);
+        const currentArticle = initialArticles.find(a => a.isCurrent);
         if (currentArticle && currentArticle.cycleIndex !== undefined) {
           this.lastConsumedIndex = currentArticle.cycleIndex;
           await this.markCurrentArticleAsConsumed();
         }
         
         // Notify subscribers of initial articles
-        this.subscribers.forEach(callback => callback(this.articles));
+        this.subscribers.forEach(callback => {
+          const metadata = {
+            isNewCycle: false,
+            cycleCount: this.lastCycleCount,
+            currentArticle: currentArticle ? currentArticle.message_id : null
+          };
+          callback(this.articles, metadata);
+        });
       } else {
         console.warn('No articles received from initial fetch');
       }
@@ -92,7 +102,7 @@ class ArticleService {
         // Reset retry count on successful fetch
         this.retryCount = 0;
         
-        // Detect cycle completion by checking the current article
+        // Find the current article
         const currentArticle = newArticles.find(a => a.isCurrent);
         const currentCycleCount = this.getCycleCount(newArticles);
         const isNewCycle = currentCycleCount > this.lastCycleCount;
@@ -100,6 +110,7 @@ class ArticleService {
         if (isNewCycle) {
           console.log(`New cycle detected: ${currentCycleCount}`);
           this.lastCycleCount = currentCycleCount;
+          // We don't reset articles on new cycle anymore
         }
         
         // Check if the current article has changed
@@ -110,10 +121,10 @@ class ArticleService {
           // Update our consumed index and mark as consumed
           this.lastConsumedIndex = currentArticle.cycleIndex;
           await this.markCurrentArticleAsConsumed();
+          
+          // Update our local articles with the current article
+          this.updateCurrentArticle(currentArticle);
         }
-        
-        // Update our local articles
-        this.articles = newArticles;
         
         // Notify subscribers with metadata
         const metadata = {
@@ -124,7 +135,7 @@ class ArticleService {
         
         this.subscribers.forEach(callback => {
           console.log('Notifying subscriber of updates');
-          callback(newArticles, metadata);
+          callback(this.articles, metadata);
         });
       } catch (error) {
         console.error('Error polling for updates:', error);
@@ -147,6 +158,32 @@ class ArticleService {
       // Wait before next poll
       console.log(`Waiting ${this.pollInterval}ms before next poll`);
       await new Promise(resolve => setTimeout(resolve, this.pollInterval));
+    }
+  }
+  
+  // Helper method to update the current article in our local articles array
+  updateCurrentArticle(currentArticle) {
+    // First, reset any previous current article
+    this.articles = this.articles.map(article => ({
+      ...article,
+      isCurrent: false
+    }));
+    
+    // Then update or add the new current article
+    const index = this.articles.findIndex(a => a.message_id === currentArticle.message_id);
+    if (index >= 0) {
+      // Update existing article
+      this.articles[index] = {
+        ...this.articles[index],
+        ...currentArticle,
+        isCurrent: true
+      };
+    } else {
+      // Add new article
+      this.articles.push({
+        ...currentArticle,
+        isCurrent: true
+      });
     }
   }
   
