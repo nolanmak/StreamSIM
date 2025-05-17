@@ -1,25 +1,5 @@
 import { fetchItemsWithValidUrls } from './dynamoDbService';
 
-// Helper function to format time with hour properly displayed
-const formatTimeWithHour = (date) => {
-  const options = {
-    timeZone: 'America/New_York',
-    hour12: true,
-    hour: 'numeric',
-    minute: '2-digit',
-    second: '2-digit'
-  };
-  
-  let formattedTime = date.toLocaleTimeString('en-US', options);
-  
-  // Ensure the hour is included
-  if (formattedTime.indexOf(':') === 0) {
-    formattedTime = `12${formattedTime}`;
-  }
-  
-  return formattedTime;
-};
-
 class ArticleService {
   constructor() {
     this.subscribers = new Set();
@@ -41,19 +21,6 @@ class ArticleService {
       console.log(`Loaded ${this.articles.length} articles initially`);
       
       if (this.articles && this.articles.length > 0) {
-        // Only add timestamps to articles that don't have them
-        this.articles = this.articles.map(article => {
-          if (!article.publishTimestamp || !article.publishedAt) {
-            const now = new Date();
-            return {
-              ...article,
-              publishedAt: formatTimeWithHour(now),
-              publishTimestamp: now.getTime()
-            };
-          }
-          return article;
-        });
-        
         // Notify subscribers of initial articles
         this.subscribers.forEach(callback => callback(this.articles));
       } else {
@@ -113,7 +80,7 @@ class ArticleService {
                            existingArticle.publishTimestamp !== newArticle.publishTimestamp;
           
           if (isNew) console.log(`Found new article: ${newArticle.message_id}`);
-          if (isUpdated) console.log(`Updated article: ${newArticle.message_id} with timestamp: ${newArticle.publishedAt}`);
+          if (isUpdated) console.log(`Updated article: ${newArticle.message_id}`);
           
           return isNew || isUpdated;
         });

@@ -5,28 +5,9 @@ import './BusinessWireList.css';
 
 const ITEMS_PER_PAGE = 10;
 
-// Helper function to format time with hour properly displayed
-const formatDisplayTime = (timeString) => {
-  if (!timeString) return 'Unknown';
-  
-  // If the timeString already has AM/PM, it's already properly formatted
-  if (timeString.includes('AM') || timeString.includes('PM')) {
-    return timeString;
-  }
-  
-  // Try to parse the time string
-  try {
-    const [hours, minutes, seconds] = timeString.split(':');
-    const hour = parseInt(hours, 10);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12; // Convert 0 to 12 for 12 AM
-    
-    return `${displayHour}:${minutes}:${seconds} ${ampm}`;
-  } catch (e) {
-    console.error('Error formatting time:', e);
-    return timeString; // Return original if parsing fails
-  }
-};
+// Create a cache to store timestamps by article ID
+// This ensures timestamps don't change on page refresh
+const timestampCache = {};
 
 const BusinessWireList = () => {
   const [articles, setArticles] = useState([]);
@@ -35,6 +16,47 @@ const BusinessWireList = () => {
   const [newArticleId, setNewArticleId] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [loadingMessage, setLoadingMessage] = useState('Loading latest news...');
+
+  // Helper function to format timestamps in Eastern Time
+  const formatTimeET = (timestamp) => {
+    if (!timestamp) {
+      const now = new Date();
+      return now.toLocaleTimeString('en-US', {
+        timeZone: 'America/New_York',
+        hour12: true,
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    }
+    
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString('en-US', {
+      timeZone: 'America/New_York',
+      hour12: true,
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  };
+
+  // Helper function to get or create a timestamp for an article
+  const getOrCreateTimestamp = (article) => {
+    if (timestampCache[article.message_id]) {
+      // Use cached timestamp if available
+      return timestampCache[article.message_id];
+    }
+    
+    // Create new timestamp and cache it
+    const now = new Date();
+    const timestamp = {
+      publishedAt: formatTimeET(article.publishTimestamp || now.getTime()),
+      publishTimestamp: article.publishTimestamp || now.getTime()
+    };
+    
+    timestampCache[article.message_id] = timestamp;
+    return timestamp;
+  };
 
   useEffect(() => {
     console.log('BusinessWireList component mounted');
@@ -49,7 +71,16 @@ const BusinessWireList = () => {
         console.log(`Received ${items?.length || 0} initial articles`);
         
         if (items && items.length > 0) {
-          setArticles(items);
+          // Set timestamps on the frontend for each article using the cache
+          const articlesWithTimestamps = items.map(article => {
+            const timestamp = getOrCreateTimestamp(article);
+            return {
+              ...article,
+              publishedAt: timestamp.publishedAt,
+              publishTimestamp: timestamp.publishTimestamp
+            };
+          });
+          setArticles(articlesWithTimestamps);
           setLoading(false);
         } else {
           console.warn('No initial articles received');
@@ -72,11 +103,27 @@ const BusinessWireList = () => {
       setArticles(prevArticles => {
         const updated = [...prevArticles];
         updatedArticles.forEach(newArticle => {
-          const index = updated.findIndex(a => a.message_id === newArticle.message_id);
+          // Only create new timestamps for articles we haven't seen before
+          const isNew = !timestampCache[newArticle.message_id];
+          const timestamp = getOrCreateTimestamp(newArticle);
+          
+          const formattedArticle = {
+            ...newArticle,
+            publishedAt: timestamp.publishedAt,
+            publishTimestamp: timestamp.publishTimestamp
+          };
+          
+          const index = updated.findIndex(a => a.message_id === formattedArticle.message_id);
           if (index >= 0) {
-            updated[index] = newArticle;
+            updated[index] = formattedArticle;
           } else {
-            updated.unshift(newArticle);
+            updated.unshift(formattedArticle);
+          }
+          
+          // Only highlight truly new articles
+          if (isNew) {
+            setNewArticleId(newArticle.message_id);
+            setTimeout(() => setNewArticleId(null), 5000);
           }
         });
         
@@ -95,12 +142,6 @@ const BusinessWireList = () => {
         }
         
         return sorted;
-      });
-
-      // Highlight new articles
-      updatedArticles.forEach(article => {
-        setNewArticleId(article.message_id);
-        setTimeout(() => setNewArticleId(null), 5000);
       });
     });
 
@@ -172,7 +213,7 @@ const BusinessWireList = () => {
                 year: 'numeric'
               })}</span>
               <span className="bw-location">{article.location || 'NEW YORK'}</span>
-              <span className="bw-published">Published at {formatDisplayTime(article.publishedAt)}</span>
+              <span className="bw-published">Published at {article.publishedAt}</span>
             </div>
           </div>
         ))}

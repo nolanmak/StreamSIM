@@ -96,27 +96,9 @@ const cycleOneArticle = async () => {
     // Get the current article
     const currentArticle = articles[currentIndex];
     
-    // Update the article with a new timestamp
-    const now = new Date();
-    const formattedTime = now.toLocaleTimeString('en-US', {
-      timeZone: 'America/New_York',
-      hour12: true,
-      hour: 'numeric',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-    
-    const updateParams = {
-      TableName: TABLE_NAME,
-      Key: { message_id: currentArticle.message_id },
-      UpdateExpression: 'SET publishedAt = :publishedAt, publishTimestamp = :publishTimestamp',
-      ExpressionAttributeValues: {
-        ':publishedAt': formattedTime,
-        ':publishTimestamp': now.getTime()
-      }
-    };
-
-    await dynamoDB.update(updateParams).promise();
+    // No longer updating the article in the Messages table
+    // Just log which article would be "updated" next
+    console.log(`Article ${currentArticle.message_id} would be next to update`);
 
     // Update the current index in the state table
     const updateStateParams = {
@@ -146,14 +128,12 @@ const cycleOneArticle = async () => {
       }
     }
 
-    console.log(`Updated article ${currentArticle.message_id} with new timestamp ${formattedTime}`);
+    console.log(`Updated state for article ${currentArticle.message_id}`);
     return {
-      message: 'Article updated successfully',
+      message: 'State updated successfully',
       article: {
         message_id: currentArticle.message_id,
-        title: currentArticle.title,
-        publishedAt: formattedTime,
-        publishTimestamp: now.getTime()
+        title: currentArticle.title
       },
       currentIndex: currentIndex,
       totalArticles: articles.length

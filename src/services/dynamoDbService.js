@@ -50,52 +50,15 @@ const fetchItemsWithValidUrls = async () => {
       return [];
     }
     
-    // Process the data to ensure all items have required fields
-    // but preserve their unique timestamps
-    const processedData = data.map(item => {
-      // Only add timestamp if it doesn't exist
-      if (!item.publishTimestamp || !item.publishedAt) {
-        const now = new Date();
-        
-        // Format time in Eastern Time (ET) with hour included
-        const formattedTime = formatTimeWithHour(now);
-        
-        return {
-          ...item,
-          publishedAt: formattedTime,
-          publishTimestamp: now.getTime()
-        };
-      }
-      return item;
-    });
+    // Return the data as-is without modifying timestamps
+    // Timestamp handling will be done in the BusinessWireList component
+    console.log('Processed data sample:', data.length > 0 ? data[0] : 'No items');
     
-    console.log('Processed data sample:', processedData.length > 0 ? processedData[0] : 'No items');
-    
-    return processedData;
+    return data;
   } catch (error) {
     console.error('Error fetching items from Lambda API:', error);
     return []; // Return empty array instead of throwing to prevent app crashes
   }
-};
-
-// Helper function to format time with hour properly displayed
-const formatTimeWithHour = (date) => {
-  const options = {
-    timeZone: 'America/New_York',
-    hour12: true,
-    hour: 'numeric',
-    minute: '2-digit',
-    second: '2-digit'
-  };
-  
-  let formattedTime = date.toLocaleTimeString('en-US', options);
-  
-  // Ensure the hour is included
-  if (formattedTime.indexOf(':') === 0) {
-    formattedTime = `12${formattedTime}`;
-  }
-  
-  return formattedTime;
 };
 
 export { fetchItemsWithValidUrls };
