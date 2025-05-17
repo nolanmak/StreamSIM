@@ -40,7 +40,7 @@ const formatTimeET = (timestamp) => {
     hour: 'numeric',
     minute: '2-digit',
     second: '2-digit'
-  });
+  }).replace(/\.\d+/, ''); // Remove milliseconds
 };
 
 // Create a response object with CORS headers for all origins
