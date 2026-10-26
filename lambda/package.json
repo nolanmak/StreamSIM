@@ -9,6 +9,6 @@
     "build": "zip -r deployment.zip . -x \"*.git*\" \"node_modules/.bin/*\""
   },
   "dependencies": {
-    "aws-sdk": "^2.1480.0"
+    "aws-sdk": "^2.1693.0"
   }
 }
